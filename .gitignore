@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch Checkpoints & Artifacts
+outputs/checkpoints/*.pt
+outputs/checkpoints/*.pth
+outputs/cache/*.pt
+outputs/cache/*.npy
+outputs/eval_results/*.png
+outputs/metadata/
+*.pt
+*.pth
+*.npy
+
+# Large Data & Datasets
+data/
+archive.zip
+*.zip
+*.tar
+*.tar.gz
+
+# Reference Repos & Temp Files
+reference_repo/
+temp_extraction/
+.ipynb_checkpoints/
+*.egg-info/
+.pytest_cache/
+.vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db
