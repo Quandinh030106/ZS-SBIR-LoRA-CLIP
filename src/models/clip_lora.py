@@ -6,6 +6,11 @@ FILE: src/models/clip_lora.py
 ROLE: Asymmetric Dual-Encoder Hybrid LoRA-CLIP Model Architecture
 PROJECT: Zero-Shot & Generalized Sketch-Based Image Retrieval (CS331)
 ================================================================================
+Features:
+  - Asymmetric Dual-Encoder (100% Frozen Photo Tower + LoRA-adapted Sketch Tower).
+  - LowRankLinearAdapter on Attention Projections.
+  - BottleneckResidualAdapters with strict Zero-Initialization.
+  - Multimodal Sketch + Text Duet Query Fusion (CVPR 2024 'You'll Never Walk Alone').
 """
 
 import copy
@@ -113,6 +118,34 @@ class AsymmetricHybridLoRACLIP(nn.Module):
     def adapt_text_prototypes(self, raw_text_prototypes: torch.Tensor) -> torch.Tensor:
         """Projects frozen text embeddings through trained text adapter."""
         return self.text_adapter(F.normalize(raw_text_prototypes.float(), dim=-1))
+
+    def encode_multimodal_query(
+        self,
+        sketch_tensor: torch.Tensor,
+        text_prompt: Optional[str] = None,
+        clip_model: Optional[nn.Module] = None,
+        tokenize_fn=None,
+        device: Optional[torch.device] = None,
+        alpha: float = 0.7,
+    ) -> torch.Tensor:
+        """
+        Multimodal Sketch + Text Duet Retrieval (CVPR 2024 'You'll Never Walk Alone').
+        Fuses visual sketch representation with optional textual descriptions (e.g. 'red color', 'leather texture').
+        Formula: q_final = L2_Normalize(alpha * f_sketch + (1 - alpha) * f_text)
+        """
+        f_s = self.encode_sketch(sketch_tensor)
+        if text_prompt is None or not text_prompt.strip() or clip_model is None or tokenize_fn is None:
+            return f_s
+
+        dev = device if device is not None else sketch_tensor.device
+        tokens = tokenize_fn([text_prompt.strip()]).to(dev)
+        with torch.no_grad():
+            raw_text = clip_model.encode_text(tokens).float()
+        f_t = self.adapt_text_prototypes(raw_text)
+
+        # Vector fusion on hypersphere
+        f_fused = alpha * f_s + (1.0 - alpha) * f_t
+        return F.normalize(f_fused, dim=-1)
 
     def count_parameters(self) -> Dict[str, Any]:
         """Calculates total, trainable, and percentage ratio of parameters."""

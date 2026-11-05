@@ -86,6 +86,10 @@ class SBIRConfig:
     erase_prob: float = 0.5
     erase_scale: Tuple[float, float] = (0.02, 0.15)
     erase_ratio: Tuple[float, float] = (0.3, 3.3)
+    enable_partial_mask: bool = True     # CVPR 2020: On-the-fly Partial sketch simulation
+    partial_prob: float = 0.35
+    enable_stroke_noise: bool = True     # CVPR 2022: Noise-Tolerant scribble robustness
+    noise_prob: float = 0.25
 
     # Model & LoRA Architecture
     clip_backbone: str = "ViT-B/32"

@@ -148,6 +148,10 @@ def run_training_pipeline(cfg: SBIRConfig, eval_only_baseline: bool = False) -> 
         image_size=cfg.image_size,
         pad_ratio=cfg.pad_ratio,
         min_contour_area=cfg.min_contour_area,
+        morph_prob=cfg.morph_prob,
+        erase_prob=cfg.erase_prob,
+        partial_prob=cfg.partial_prob if cfg.enable_partial_mask else 0.0,
+        noise_prob=cfg.noise_prob if cfg.enable_stroke_noise else 0.0,
     )
 
     # 4. Prepare Evaluation DataLoaders (Unseen Gallery & Query)

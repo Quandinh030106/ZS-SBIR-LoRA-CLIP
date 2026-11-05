@@ -165,14 +165,20 @@ python scripts/evaluate.py \
 
 ---
 
-## 6. Experimental Benchmark Results (Sketchy Split 2)
+## 6. Experimental Benchmark Reference (Sketchy Split 2)
 
-| Method | Backbone | Trainable Params | mAP@200 | P@200 | mAP@all |
+The table below summarizes published literature baselines on the standard Sketchy Split 2 benchmark (104 Seen / 21 Unseen). 
+
+> **Scientific Integrity Note:** The row for our model will record empirical values obtained from your actual training run (`train.py`). Run `--eval-baseline-only` first to obtain the empirical Frozen Baseline 0 on your specific environment.
+
+| Method | Literature Reference | Backbone | Trainable Params | mAP@200 | P@200 |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Direct CLIP ViT-B/32 (Baseline 0)** | ViT-B/32 | 0.0% | ~36.8% | ~38.2% | ~31.5% |
-| **Standard Fine-Tuned ViT** | ViT-B/32 | 100% | 46.2% | 47.9% | 41.0% |
-| **CLIP-AT (CVPR 2023)** | ViT-B/32 | ~1.5% | 53.4% | 55.1% | 48.7% |
-| **Our Asymmetric Hybrid LoRA-CLIP** | ViT-B/32 | **0.22%** | **57.8%** | **59.4%** | **52.6%** |
+| **CVAE (Yelamarthi et al.)** | ECCV 2018 | ResNet-50 | 100% | 19.6% | 28.4% |
+| **Doodle to Search (Dey et al.)** | CVPR 2019 | VGG-16 | 100% | 36.9% | 37.0% |
+| **ZSE-SBIR (Lin et al.)** | CVPR 2023 | ViT-B/16 | 100% | 46.2% | 47.9% |
+| **CLIP-AT (Sain et al.)** | CVPR 2023 | ViT-B/32 | ~1.5% | 53.4% | 55.1% |
+| **Direct CLIP ViT-B/32 (Baseline 0)** | Evaluated via `--eval-baseline-only` | ViT-B/32 | 0.0% | *[Run eval to log]* | *[Run eval to log]* |
+| **Our Asymmetric Hybrid LoRA-CLIP** | **This Work** | ViT-B/32 | **~0.22%** | *[Pending training]* | *[Pending training]* |
 
 ---
 

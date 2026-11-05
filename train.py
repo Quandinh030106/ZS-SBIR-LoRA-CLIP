@@ -65,10 +65,14 @@ def run_comprehensive_self_test() -> None:
         morph_prob=1.0,
         enable_random_erase=True,
         erase_prob=1.0,
+        enable_partial_mask=True,
+        partial_prob=1.0,
+        enable_stroke_noise=True,
+        noise_prob=1.0,
     )
     out_img = pre(Image.fromarray(canvas))
     assert out_img.size == (224, 224), f"Expected (224, 224), got {out_img.size}"
-    print("  --> PASS: SketchCVPreprocessor successfully filtered noise & cropped to 224x224.")
+    print("  --> PASS: SketchCVPreprocessor successfully filtered noise, applied partial mask & cropped to 224x224.")
 
     # 2. Test LoRA Linear Adapter & Bottleneck Residual Adapter
     print("\n[TEST 2/5] Testing LoRA & Bottleneck Residual Adapters...")
