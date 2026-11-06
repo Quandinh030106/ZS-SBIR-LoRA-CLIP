@@ -48,6 +48,18 @@ class UnifiedSplitManager:
         if not self.data_root.exists():
             raise FileNotFoundError(f"Data root not found: {self.data_root.resolve()}")
 
+        # Auto-drill down if nested under temp_extraction/256x256 or TUBerlin
+        for nested in [
+            self.data_root / "temp_extraction" / "256x256",
+            self.data_root / "256x256",
+            self.data_root / "temp_extraction",
+            self.data_root / "TUBerlin",
+            self.data_root / "tuberlin",
+        ]:
+            if nested.exists() and any(nested.iterdir()):
+                self.data_root = nested
+                break
+
         # 1. Resolve photo directory
         self.photo_dir = self._resolve_photo_dir(photo_subdir)
 
@@ -76,13 +88,12 @@ class UnifiedSplitManager:
         """Finds the directory containing class subfolders for photos."""
         candidate = self.data_root / subdir_name
         if not candidate.exists():
-            for alt_name in ["photo", "ImageResized", "images", "image", "photos"]:
-                alt = self.data_root / alt_name
-                if alt.exists():
-                    candidate = alt
+            for d in sorted(self.data_root.iterdir()):
+                if d.is_dir() and any(k in d.name.lower() for k in ["imageresized", "photo", "images", "image"]):
+                    candidate = d
                     break
         if not candidate.exists():
-            raise FileNotFoundError(f"Photo directory not found at: {self.data_root / subdir_name}")
+            raise FileNotFoundError(f"Photo directory not found under: {self.data_root}")
 
         # Check for nested transform folder e.g., photo/tx_000000000000
         tx_candidate = candidate / self.canonical_tx
@@ -111,13 +122,12 @@ class UnifiedSplitManager:
         dirs: List[Path] = []
 
         if not candidate.exists():
-            for alt_name in ["splitted_sketches", "sketch", "sketches", "png"]:
-                alt = self.data_root / alt_name
-                if alt.exists():
-                    candidate = alt
+            for d in sorted(self.data_root.iterdir()):
+                if d.is_dir() and any(k in d.name.lower() for k in ["splitted_sketches", "sketch", "sketches", "png"]):
+                    candidate = d
                     break
         if not candidate.exists():
-            raise FileNotFoundError(f"Sketch directory not found at: {self.data_root / subdir_name}")
+            raise FileNotFoundError(f"Sketch directory not found under: {self.data_root}")
 
         # Case 1: splitted_sketches with train and test
         train_dir = candidate / "train" / self.canonical_tx
