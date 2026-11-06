@@ -15,7 +15,7 @@ outputs/metadata/
 *.npy
 
 # Large Data & Datasets
-data/
+/data/
 archive.zip
 *.zip
 *.tar
