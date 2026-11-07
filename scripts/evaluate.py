@@ -57,7 +57,10 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     print(f"[EVAL] Loading checkpoint: {args.checkpoint}")
-    ckpt = torch.load(args.checkpoint, map_location=device)
+    try:
+        ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    except TypeError:
+        ckpt = torch.load(args.checkpoint, map_location=device)
     cfg: SBIRConfig = ckpt.get("config", SBIRConfig())
 
     manager = UnifiedSplitManager(
