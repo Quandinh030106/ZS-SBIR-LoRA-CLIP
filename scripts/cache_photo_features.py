@@ -33,6 +33,8 @@ def main():
     parser = argparse.ArgumentParser(description="Offline Photo Feature Caching Tool")
     parser.add_argument("--data-root", type=str, default="data/sketchy")
     parser.add_argument("--dataset", type=str, default="sketchy")
+    parser.add_argument("--photo-subdir", type=str, default="photo")
+    parser.add_argument("--sketch-subdir", type=str, default="splitted_sketches")
     parser.add_argument("--split", type=str, default="split2")
     parser.add_argument("--output", type=str, default="outputs/cache/photo_features_cache.pt")
     parser.add_argument("--batch-size", type=int, default=128)
@@ -46,6 +48,8 @@ def main():
     manager = UnifiedSplitManager(
         data_root=args.data_root,
         dataset_name=args.dataset,
+        photo_subdir=args.photo_subdir,
+        sketch_subdir=args.sketch_subdir,
         split_protocol=args.split,
     )
     seen_photos, _ = manager.collect_samples(manager.seen_classes, manager.seen_cls2idx)

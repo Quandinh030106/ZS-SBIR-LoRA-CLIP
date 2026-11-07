@@ -45,8 +45,16 @@ class UnifiedSplitManager:
         self.split_protocol = split_protocol
         self.canonical_tx = canonical_tx
 
-        if not self.data_root.exists():
-            raise FileNotFoundError(f"Data root not found: {self.data_root.resolve()}")
+        p_root = Path(data_root)
+        if not p_root.exists():
+            resolved = self.resolve_candidate_path(data_root, dataset_name)
+            if resolved is not None and resolved.exists():
+                print(f"[DATA] Auto-resolved '{data_root}' -> '{resolved}'")
+                self.data_root = resolved
+            else:
+                raise FileNotFoundError(f"Data root not found: {p_root.resolve()}")
+        else:
+            self.data_root = p_root
 
         # Auto-drill down if nested under temp_extraction/256x256 or TUBerlin
         for nested in [
@@ -168,9 +176,64 @@ class UnifiedSplitManager:
         else:
             raise ValueError(f"Unsupported split protocol: {self.split_protocol}")
 
-        # Filter against available classes
-        unseen = [c for c in self.all_classes if c in reference]
+        # Filter against available classes (with whitespace/underscore normalization)
+        def _normalize(s: str) -> str:
+            return s.lower().replace("_", "").replace(" ", "").replace("-", "")
+
+        ref_norm_map = {_normalize(r): r for r in reference}
+        unseen = [c for c in self.all_classes if _normalize(c) in ref_norm_map]
         return sorted(unseen)
+
+    @classmethod
+    def resolve_candidate_path(cls, data_root: str, dataset_name: str = "sketchy") -> Optional[Path]:
+        """
+        Attempts to resolve data_root if the specified directory does not exist.
+        Checks known Kaggle dataset mount locations and local paths.
+        """
+        p = Path(data_root)
+        if p.exists():
+            return p
+
+        candidates: List[Path] = []
+        name = dataset_name.lower()
+        if "sketchy" in name:
+            candidates = [
+                Path("/kaggle/input/datasets/dhananjayapaliwal/fulldataset/temp_extraction/256x256"),
+                Path("/kaggle/input/datasets/dhananjayapaliwal/fulldataset"),
+                Path("/kaggle/input/fulldataset/temp_extraction/256x256"),
+                Path("/kaggle/input/fulldataset"),
+                Path("/kaggle/input/sketchy-dataset/256x256"),
+                Path("/kaggle/input/sketchy-dataset"),
+                Path("data/sketchy"),
+                Path("../data/sketchy"),
+            ]
+        elif "tuberlin" in name:
+            candidates = [
+                Path("/kaggle/input/datasets/rishikashili/tuberlin/TUBerlin"),
+                Path("/kaggle/input/datasets/rishikashili/tuberlin"),
+                Path("/kaggle/input/tuberlin/TUBerlin"),
+                Path("/kaggle/input/tuberlin"),
+                Path("data/tuberlin"),
+                Path("../data/tuberlin"),
+            ]
+
+        for cand in candidates:
+            if cand.exists():
+                return cand
+
+        # Fallback dynamic scan under /kaggle/input if running in Kaggle environment
+        kaggle_input = Path("/kaggle/input")
+        if kaggle_input.exists():
+            for root, dirs, _ in os.walk(str(kaggle_input)):
+                dirs_lower = [d.lower() for d in dirs]
+                if "sketchy" in name:
+                    if "photo" in dirs_lower and ("splitted_sketches" in dirs_lower or "sketch" in dirs_lower):
+                        return Path(root)
+                elif "tuberlin" in name:
+                    if any("imageresized" in d for d in dirs_lower) and any("png" in d for d in dirs_lower):
+                        return Path(root)
+
+        return None
 
     @staticmethod
     def extract_instance_id(filepath: str, is_sketch: bool) -> str:

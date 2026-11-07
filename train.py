@@ -203,6 +203,11 @@ def main():
         use_cached_photos=args.use_cached_photos,
     )
 
+    from src.data.split_manager import UnifiedSplitManager
+    resolved_root = UnifiedSplitManager.resolve_candidate_path(config.data_root, config.dataset_name)
+    if resolved_root is not None and resolved_root.exists():
+        config.data_root = str(resolved_root)
+
     if not os.path.exists(config.data_root):
         print(f"[ERROR] Data root '{config.data_root}' not found!")
         print("Run with --self-test to verify pipeline code locally without dataset.")

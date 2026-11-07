@@ -43,6 +43,8 @@ def main():
                         help="Path to trained .pt checkpoint file")
     parser.add_argument("--data-root", type=str, default="data/sketchy")
     parser.add_argument("--dataset", type=str, default="sketchy")
+    parser.add_argument("--photo-subdir", type=str, default="photo")
+    parser.add_argument("--sketch-subdir", type=str, default="splitted_sketches")
     parser.add_argument("--split", type=str, default="split2")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--viz-samples", type=int, default=5,
@@ -61,12 +63,16 @@ def main():
     manager = UnifiedSplitManager(
         data_root=args.data_root,
         dataset_name=args.dataset,
+        photo_subdir=args.photo_subdir,
+        sketch_subdir=args.sketch_subdir,
         split_protocol=args.split,
     )
     manager.print_summary()
 
+    eval_classes = manager.unseen_classes if len(manager.unseen_classes) > 0 else manager.all_classes
+    eval_cls2idx = manager.unseen_cls2idx if len(manager.unseen_classes) > 0 else manager.global_cls2idx
     unseen_photos, unseen_sketches = manager.collect_samples(
-        manager.unseen_classes, manager.unseen_cls2idx
+        eval_classes, eval_cls2idx
     )
     print(f"[EVAL] Unseen Gallery: {len(unseen_photos):,} photos | Unseen Queries: {len(unseen_sketches):,} sketches")
 
