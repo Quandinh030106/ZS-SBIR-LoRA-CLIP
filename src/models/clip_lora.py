@@ -95,13 +95,21 @@ class AsymmetricHybridLoRACLIP(nn.Module):
     @torch.no_grad()
     def encode_frozen_visual(self, img_tensor: torch.Tensor) -> torch.Tensor:
         """Raw feature extraction from 100% frozen CLIP visual backbone."""
-        dtype = next(self.frozen_visual.parameters()).dtype
+        dtype = (
+            self.frozen_visual.conv1.weight.dtype
+            if hasattr(self.frozen_visual, "conv1")
+            else next(self.frozen_visual.parameters()).dtype
+        )
         feat = self.frozen_visual(img_tensor.to(dtype)).float()
         return F.normalize(feat, dim=-1)
 
     def encode_sketch(self, sketch_tensor: torch.Tensor) -> torch.Tensor:
         """Full trainable forward pass for sketch images."""
-        dtype = next(self.sketch_visual.parameters()).dtype
+        dtype = (
+            self.sketch_visual.conv1.weight.dtype
+            if hasattr(self.sketch_visual, "conv1")
+            else next(self.sketch_visual.parameters()).dtype
+        )
         raw_feat = self.sketch_visual(sketch_tensor.to(dtype)).float()
         return self.sketch_adapter(F.normalize(raw_feat, dim=-1))
 

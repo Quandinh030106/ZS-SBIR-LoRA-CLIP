@@ -1,3 +1,15 @@
+---
+title: Open-ZS-SBIR Studio
+emoji: 🎨
+colorFrom: gray
+colorTo: blue
+sdk: gradio
+sdk_version: 5.20.0
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # Zero-Shot & Generalized Sketch-Based Image Retrieval (CS331)
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg?logo=pytorch)](https://pytorch.org/)

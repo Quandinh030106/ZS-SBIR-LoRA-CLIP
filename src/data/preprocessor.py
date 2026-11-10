@@ -87,27 +87,66 @@ class SketchCVPreprocessor:
                 img_rgb, (self.target_size, self.target_size), interpolation=cv2.INTER_AREA
             )
 
-        # 2. Extract external contours and filter noise dust pixels
+        # 2. Extract external contours and filter noise dust / stray click pixels
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        valid_boxes = []
+        candidate_items = []
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area >= self.min_contour_area:
                 x, y, w, h = cv2.boundingRect(cnt)
-                valid_boxes.append((x, y, x + w, y + h))
+                candidate_items.append({
+                    "cnt": cnt,
+                    "area": area,
+                    "box": (x, y, x + w, y + h),
+                    "center": (x + w / 2.0, y + h / 2.0)
+                })
 
-        # Fallback if all contours were below threshold
-        if not valid_boxes:
+        # Fallback if all contours were below min_contour_area threshold
+        if not candidate_items:
             coords = cv2.findNonZero(binary)
             if coords is None:
                 return cv2.resize(
                     img_rgb, (self.target_size, self.target_size), interpolation=cv2.INTER_AREA
                 )
             x, y, w, h = cv2.boundingRect(coords)
-            valid_boxes.append((x, y, x + w, y + h))
+            valid_boxes = [(x, y, x + w, y + h)]
+        else:
+            # Sort contours by area in descending order
+            candidate_items.sort(key=lambda item: item["area"], reverse=True)
+            max_area = candidate_items[0]["area"]
 
-        # 3. Compute union bounding box across all valid contours
+            # Main drawing cluster initialization
+            main_items = [candidate_items[0]]
+            main_box = list(candidate_items[0]["box"])  # [min_x, min_y, max_x, max_y]
+
+            for item in candidate_items[1:]:
+                # Substantial secondary stroke (>= 12% of max area) belongs to the drawing
+                if item["area"] >= 0.12 * max_area:
+                    main_items.append(item)
+                    main_box[0] = min(main_box[0], item["box"][0])
+                    main_box[1] = min(main_box[1], item["box"][1])
+                    main_box[2] = max(main_box[2], item["box"][2])
+                    main_box[3] = max(main_box[3], item["box"][3])
+                else:
+                    # Small component: check spatial distance to current main bounding box
+                    cx, cy = item["center"]
+                    dx = max(main_box[0] - cx, 0, cx - main_box[2])
+                    dy = max(main_box[1] - cy, 0, cy - main_box[3])
+                    dist = math.sqrt(dx * dx + dy * dy)
+
+                    # If close to main body (< 35px), keep it (could be dot on 'i', eye dot, button)
+                    # If far away (> 35px) and tiny (< 12% max_area), reject as stray click / dust tap!
+                    if dist < 35.0:
+                        main_items.append(item)
+                        main_box[0] = min(main_box[0], item["box"][0])
+                        main_box[1] = min(main_box[1], item["box"][1])
+                        main_box[2] = max(main_box[2], item["box"][2])
+                        main_box[3] = max(main_box[3], item["box"][3])
+
+            valid_boxes = [it["box"] for it in main_items]
+
+        # 3. Compute union bounding box across all verified drawing contours
         min_x = min(b[0] for b in valid_boxes)
         min_y = min(b[1] for b in valid_boxes)
         max_x = max(b[2] for b in valid_boxes)
