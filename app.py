@@ -30,7 +30,8 @@ from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 import clip
 import gradio as gr
 
@@ -427,8 +428,8 @@ def run_visual_retrieval(
     selected_model: str,
     gallery_scope: str,
     semantic_clue: Optional[str],
+    retrieval_mode: str = "🤝 Dual-Expert Consensus (AI Hội chẩn)",
     session_gallery: Optional[Dict[str, Any]] = None,
-    retrieval_mode: str = "🤝 Dual-Expert Consensus (AI Hội chẩn)"
 ) -> Tuple[str, str, str, str, List[Tuple[str, str]]]:
     """Executes Top 10 Visual Retrieval with Dual-Expert Consensus Architecture."""
     t_start = time.time()
@@ -479,7 +480,7 @@ def run_visual_retrieval(
         base_classes = DEFAULT_GALLERY_CLASSES
 
     # Append ephemeral session photos if any
-    if session_gallery and session_gallery.get("feats"):
+    if isinstance(session_gallery, dict) and session_gallery.get("feats"):
         custom_feats = torch.stack(session_gallery["feats"], dim=0).to(DEVICE)
         raw_gallery_feats = torch.cat([base_feats, custom_feats], dim=0)
         active_gallery_paths = base_paths + session_gallery["paths"]
@@ -830,6 +831,8 @@ with gr.Blocks(title="ZS-SBIR Studio — Apple HIG Edition") as demo:
                 type="pil",
                 label="Drawing Pad (Black = Pen, White = Eraser)",
                 brush=gr.Brush(colors=["#000000", "#FFFFFF"], default_size=6),
+                layers=False,
+                canvas_size=(224, 224),
             )
 
             upload_sketch_tab = gr.Image(
@@ -952,7 +955,15 @@ with gr.Blocks(title="ZS-SBIR Studio — Apple HIG Edition") as demo:
 
     # Event 1: Visual Retrieval Execution (with Dual-Expert Consensus)
     def on_click_retrieval(pad, up, model, scope, clue, mode, state):
-        pred_label, conf, consensus_html, t_el, grid = run_visual_retrieval(pad, up, model, scope, clue, mode, state)
+        pred_label, conf, consensus_html, t_el, grid = run_visual_retrieval(
+            sketch_input=pad,
+            sketch_upload=up,
+            selected_model=model,
+            gallery_scope=scope,
+            semantic_clue=clue,
+            retrieval_mode=mode,
+            session_gallery=state,
+        )
         p_html = f"<div style='font-size:22px;font-weight:600;color:#1D1D1F;'>{pred_label}</div>"
         c_html = f"<div style='text-align:right;font-size:13px;color:#34C759;font-weight:600;'>Độ tin cậy: {conf}</div>"
         t_html = f"<div style='text-align:right;font-size:11.5px;color:#86868B;'>{t_el}</div>"
