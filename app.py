@@ -255,17 +255,15 @@ def load_model_from_checkpoint(ckpt_path: Path) -> AsymmetricHybridLoRACLIP:
     model.eval()
     return model
 
-# Initialize Best Model (Model B)
+# Initialize Best Model
 BEST_CKPT_PATH = proj_root / "outputs" / "checkpoints" / "best_seco_lora_clip.pt"
 if not BEST_CKPT_PATH.exists():
     BEST_CKPT_PATH = proj_root / "outputs" / "checkpoints" / "best_seco_lora_clip.zip"
 
-OUR_MODEL_KEY = "Robust Semi-Hard (72.18% mAP)"
-BASELINE_KEY = "Standard Baseline (69.68% mAP)"
-ENSEMBLE_KEY = "Dual Ensemble (73.05% mAP)"
+OUR_MODEL_KEY = "Asymmetric LoRA-CLIP (Official 72.18% mAP)"
 
 if BEST_CKPT_PATH.exists():
-    print(f"[SYSTEM] Loading Best Model: {OUR_MODEL_KEY}...")
+    print(f"[SYSTEM] Loading Checkpoint: {OUR_MODEL_KEY}...")
     LOADED_MODELS[OUR_MODEL_KEY] = load_model_from_checkpoint(BEST_CKPT_PATH)
 
 reg = get_registry()
@@ -280,7 +278,7 @@ if OUR_MODEL_KEY not in reg:
     save_registry(reg)
 
 for name, meta in reg.items():
-    if name not in LOADED_MODELS and Path(meta["path"]).exists():
+    if name not in LOADED_MODELS and Path(meta.get("path", "")).exists():
         try:
             LOADED_MODELS[name] = load_model_from_checkpoint(Path(meta["path"]))
             print(f"[SYSTEM] Registered from disk: {name}")
@@ -292,17 +290,7 @@ MODEL_SPECS_DATA = {
     OUR_MODEL_KEY: {
         "method": "Asymmetric LoRA (Rank 8, Vision Cross-Attn)",
         "loss": "Batch Semi-Hard InfoNCE (Margin 0.20)",
-        "metrics": "72.18% mAP@all (Sketchy) • 57.51% (TU-Berlin)"
-    },
-    BASELINE_KEY: {
-        "method": "Symmetric LoRA (Rank 8, Standard Text+Vision)",
-        "loss": "Classic Triplet Margin Ranking Loss",
-        "metrics": "69.68% mAP@all"
-    },
-    ENSEMBLE_KEY: {
-        "method": "Dual-Expert Late Fusion (0.6 Robust + 0.4 Baseline)",
-        "loss": "Multi-Task Representation Ensemble",
-        "metrics": "73.05% mAP@all"
+        "metrics": "72.18% mAP@all (Sketchy Unseen) • 57.51% (TU-Berlin)"
     }
 }
 
@@ -345,19 +333,9 @@ def encode_query_representation(
 ) -> torch.Tensor:
     """Encodes sketch + optional semantic clue with multimodal fusion."""
     with torch.no_grad():
-        if selected_model_name == ENSEMBLE_KEY:
-            m_ours = LOADED_MODELS.get(OUR_MODEL_KEY, next(iter(LOADED_MODELS.values())))
-            alt_key = next((k for k in LOADED_MODELS.keys() if k != OUR_MODEL_KEY), None)
-            m_alt = LOADED_MODELS.get(alt_key, m_ours)
-
-            f_ours = m_ours.encode_sketch(sketch_tensor)
-            f_alt = m_alt.encode_sketch(sketch_tensor)
-            q_feat = 0.6 * f_ours + 0.4 * f_alt
-            q_feat = q_feat / q_feat.norm(dim=-1, keepdim=True)
-        else:
-            active_model = LOADED_MODELS.get(selected_model_name, next(iter(LOADED_MODELS.values())))
-            q_feat = active_model.encode_sketch(sketch_tensor)
-            q_feat = q_feat / q_feat.norm(dim=-1, keepdim=True)
+        active_model = LOADED_MODELS.get(selected_model_name, next(iter(LOADED_MODELS.values())))
+        q_feat = active_model.encode_sketch(sketch_tensor)
+        q_feat = q_feat / q_feat.norm(dim=-1, keepdim=True)
 
         # Optional Semantic Clue Fusion
         enriched_clue = enrich_semantic_clue(semantic_clue)
@@ -459,12 +437,15 @@ def run_visual_retrieval(
         best_conf = float(sim_text[best_idx].cpu().item() * 100.0)
         bilingual_label = translate_concept(best_en)
 
-    if best_conf >= 25.0:
+    # Calibrated confidence tiers (honest, uninflated)
+    if best_conf >= 60.0:
         conf_badge = f"Rất cao ({best_conf:.1f}%)"
-    elif best_conf >= 20.0:
+    elif best_conf >= 40.0:
         conf_badge = f"Khá ({best_conf:.1f}%)"
-    else:
+    elif best_conf >= 25.0:
         conf_badge = f"Trung bình ({best_conf:.1f}%)"
+    else:
+        conf_badge = f"Thấp ({best_conf:.1f}%)"
 
     pred_display = f"{bilingual_label}"
 
@@ -490,7 +471,7 @@ def run_visual_retrieval(
         active_gallery_paths = base_paths
         active_gallery_classes = base_classes
 
-    # 4. Top 10 Cosine Ranking through Photo Adapter with Dual-Expert Consensus
+    # 4. Top 10 Cosine Ranking through Photo Adapter with Adaptive Consensus
     with torch.no_grad():
         adapted_gallery_feats = active_model.encode_photo_from_cached(raw_gallery_feats)
         raw_sims = (q_feat @ adapted_gallery_feats.T).squeeze(0)
@@ -501,36 +482,23 @@ def run_visual_retrieval(
         max_p = max(prob_map.values()) if prob_map else 1.0
 
         if "Dual-Expert" in retrieval_mode:
-            # Map each gallery photo to its concept probability
+            # Adaptive Gating: Gate gently when uncertain (<40%), gate strictly when confident (>=50%)
+            # Prevents low-confidence top-1 guesses from shutting out the true object!
+            conf_scale = min(max(best_conf, 15.0) / 50.0, 1.0)
+            gate_exponent = 0.35 * conf_scale
+
             class_priors = torch.tensor(
                 [prob_map.get(str(c).lower(), 1e-4) for c in active_gallery_classes],
                 device=raw_sims.device,
                 dtype=raw_sims.dtype
             )
-            # Relative confidence ratio
             rel_prior = (class_priors / max_p).clamp(min=0.01)
-            # Gated ranking score: Instance similarity modulated by concept prior
-            final_sims = raw_sims * torch.pow(rel_prior, 0.40)
-            consensus_badge = f"""
-            <div style='background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12.5px;color:#166534;'>
-                <div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>
-                    <span style='background:#16A34A;color:#FFFFFF;padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;'>AI 1 (Doodle/Concept)</span>
-                    <span>Đoán ý niệm chủ đạo: <b>{bilingual_label}</b> ({best_conf:.1f}%)</span>
-                </div>
-                <div style='display:flex;align-items:center;gap:8px;'>
-                    <span style='background:#2563EB;color:#FFFFFF;padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;'>AI 2 (Sketchy/Instance)</span>
-                    <span>So khớp hình học vi mô & loại bỏ ảnh rác khác lớp trong kho 12.500 ảnh</span>
-                </div>
-            </div>
-            """
+            final_sims = raw_sims * torch.pow(rel_prior, gate_exponent)
+
+            consensus_badge = f"<div style='font-size:12px;color:#34C759;font-weight:500;padding:4px 0;'>✓ Hội chẩn thích ứng: Ý niệm <b>{bilingual_label}</b> ({best_conf:.1f}%) kết hợp so khớp hình học.</div>"
         else:
             final_sims = raw_sims
-            consensus_badge = f"""
-            <div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12px;color:#475569;'>
-                <span style='background:#64748B;color:#FFFFFF;padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;'>Single Model</span>
-                <span>Chế độ đơn mô hình: Xếp hạng thuần túy khoảng cách Cosine hình học (không hội chẩn).</span>
-            </div>
-            """
+            consensus_badge = "<div style='font-size:12px;color:#86868B;padding:4px 0;'>Chế độ đơn mô hình (Xếp hạng thuần túy Cosine hình học).</div>"
 
         top10_scores, top10_indices = torch.topk(final_sims, k=min(10, final_sims.shape[0]))
 
@@ -686,7 +654,7 @@ def register_new_checkpoint(
         else:
             msg = f"Thành công: Đã nạp TẠM THỜI '{model_name}' vào phiên hiện tại!"
 
-        all_choices = list(LOADED_MODELS.keys()) + [ENSEMBLE_KEY]
+        all_choices = list(LOADED_MODELS.keys())
         return msg, gr.Dropdown(choices=all_choices, value=model_name)
 
     except Exception as e:
@@ -790,7 +758,7 @@ with gr.Blocks(title="ZS-SBIR Studio — Apple HIG Edition") as demo:
             
             # 1. Model Selector
             gr.Markdown("<div style='font-size:12px;font-weight:600;text-transform:uppercase;color:#86868B;letter-spacing:0.5px;'>Model Architecture</div>")
-            model_choices = list(LOADED_MODELS.keys()) + [ENSEMBLE_KEY]
+            model_choices = list(LOADED_MODELS.keys())
             model_dropdown = gr.Dropdown(
                 choices=model_choices,
                 value=OUR_MODEL_KEY if OUR_MODEL_KEY in model_choices else model_choices[0],

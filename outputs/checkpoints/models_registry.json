@@ -1,0 +1,9 @@
+{
+  "Asymmetric LoRA-CLIP (Official 72.18% mAP)": {
+    "path": "outputs/checkpoints/best_seco_lora_clip.pt",
+    "method": "Asymmetric LoRA (Rank 8, Vision Cross-Attn)",
+    "loss": "Batch Semi-Hard InfoNCE (Margin 0.20)",
+    "metrics": "72.18% mAP@all (Sketchy Unseen) • 57.51% (TU-Berlin)",
+    "description": "Official CS331 Checkpoint (Epoch 8) with In-Batch Semi-Hard Mining & Zero-Init Bottleneck Adapter"
+  }
+}
