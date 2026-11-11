@@ -95,27 +95,29 @@ class SBIRConfig:
     clip_backbone: str = "ViT-B/32"
     embed_dim: int = 512
     bottleneck_dim: int = 256
-    lora_rank: int = 8
-    lora_alpha: float = 16.0
-    lora_targets: Tuple[str, ...] = ("out_proj",)  # expandable to ("out_proj", "v_proj")
+    lora_rank: int = 16
+    lora_alpha: float = 32.0
+    lora_targets: Tuple[str, ...] = ("out_proj",)
     res_scale: float = 0.2
     unfreeze_sketch_ln: bool = True
+    enable_patch_pooling: bool = True    # Spatial Attention Pooling over ViT patch tokens
+    patch_pool_weight: float = 0.3
 
     # Multi-Objective Loss & Mining
-    triplet_margin: float = 0.3
+    triplet_margin: float = 0.25
     temp_ntxent: float = 0.07
     temp_cls: float = 0.07
     temp_consist: float = 0.07
     lambda_cls: float = 0.3           # Reduced from 1.0 to prevent unseen class bias
     lambda_consist: float = 1.0
-    mining_mode: str = "semi_hard"    # 'semi_hard' or 'random'
+    mining_mode: str = "semi_hard"    # 'semi_hard', 'hard', or 'random'
 
     # Acceleration & Caching
     use_cached_photos: bool = False
     photo_cache_path: str = "outputs/cache/photo_features_cache.pt"
 
     # Optimization
-    batch_size: int = 64
+    batch_size: int = 128
     num_epochs: int = 15
     lr: float = 2e-5
     weight_decay: float = 1e-4
@@ -123,6 +125,7 @@ class SBIRConfig:
     num_workers: int = 4
     seed: int = 42
     save_dir: str = "outputs/checkpoints"
+    metrics_history_path: str = "outputs/training_metrics_history.json"
 
     # Evaluation & OOD Detection
     eval_chunk_size: int = 512

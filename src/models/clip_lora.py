@@ -4,11 +4,13 @@
 ================================================================================
 FILE: src/models/clip_lora.py
 ROLE: Asymmetric Dual-Encoder Hybrid LoRA-CLIP Model Architecture
+      with Spatial Patch-Token Attention Pooling
 PROJECT: Zero-Shot & Generalized Sketch-Based Image Retrieval (CS331)
 ================================================================================
 Features:
   - Asymmetric Dual-Encoder (100% Frozen Photo Tower + LoRA-adapted Sketch Tower).
-  - LowRankLinearAdapter on Attention Projections.
+  - LowRankLinearAdapter on Vision Attention & MLP Projections.
+  - SpatialAttentionPool extracting both CLS and 49 Patch Tokens for fine spatial strokes.
   - BottleneckResidualAdapters with strict Zero-Initialization.
   - Multimodal Sketch + Text Duet Query Fusion (CVPR 2024 'You'll Never Walk Alone').
 """
@@ -19,36 +21,46 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.models.adapters import LowRankLinearAdapter, BottleneckResidualAdapter
+from src.models.adapters import (
+    LowRankLinearAdapter,
+    BottleneckResidualAdapter,
+    SpatialAttentionPool,
+)
 
 
 class AsymmetricHybridLoRACLIP(nn.Module):
     """
     Asymmetric Dual-Encoder Architecture:
       - Photo Tower: 100% Frozen CLIP Visual Encoder + Bottleneck Residual Adapter.
-      - Sketch Tower: Trainable LoRA on Attention Blocks + Unfrozen LayerNorm + Residual Adapter.
+      - Sketch Tower: Trainable LoRA on Target Projections + Unfrozen LayerNorm
+                     + Spatial Patch-Token Attention Pooler + Bottleneck Residual Adapter.
       - Text Alignment: Bottleneck Residual Adapter on Frozen CLIP Text Prototypes.
     """
 
     def __init__(
         self,
         clip_model: nn.Module,
-        lora_rank: int = 8,
-        lora_alpha: float = 16.0,
+        lora_rank: int = 16,
+        lora_alpha: float = 32.0,
         lora_targets: Tuple[str, ...] = ("out_proj",),
         embed_dim: int = 512,
         bottleneck_dim: int = 256,
         res_scale: float = 0.2,
         unfreeze_sketch_ln: bool = True,
+        enable_patch_pooling: bool = True,
+        patch_pool_weight: float = 0.3,
     ):
         super().__init__()
+        self.enable_patch_pooling = enable_patch_pooling
+        self.patch_pool_weight = patch_pool_weight
+        self.embed_dim = embed_dim
 
-        # 1. Nhánh Photo: Đóng băng hoàn toàn (Frozen Visual Encoder)
+        # 1. Photo Tower: 100% Frozen Visual Encoder
         self.frozen_visual = copy.deepcopy(clip_model.visual).eval()
         for p in self.frozen_visual.parameters():
             p.requires_grad = False
 
-        # 2. Nhánh Sketch: Gắn LoRA và tùy chọn mở LayerNorm
+        # 2. Sketch Tower: Trainable LoRA + Unfrozen LayerNorm
         self.sketch_visual = clip_model.visual
         for p in self.sketch_visual.parameters():
             p.requires_grad = False
@@ -63,34 +75,82 @@ class AsymmetricHybridLoRACLIP(nn.Module):
                             for p in m.parameters():
                                 p.requires_grad = True
 
-                # Hook LoRA into specified target projections
+                # Search both attention and MLP blocks for target projections
+                candidate_modules = []
                 if hasattr(block, "attn"):
-                    attn = block.attn
+                    candidate_modules.append(block.attn)
+                if hasattr(block, "mlp"):
+                    candidate_modules.append(block.mlp)
+
+                for parent_mod in candidate_modules:
                     for target_name in lora_targets:
-                        if hasattr(attn, target_name):
-                            orig_linear = getattr(attn, target_name)
-                            lora_mod = LowRankLinearAdapter(
-                                orig_linear, rank=lora_rank, alpha=lora_alpha
-                            )
-                            self.lora_modules.append(lora_mod)
+                        if hasattr(parent_mod, target_name):
+                            orig_linear = getattr(parent_mod, target_name)
+                            if isinstance(orig_linear, nn.Linear):
+                                lora_mod = LowRankLinearAdapter(
+                                    orig_linear, rank=lora_rank, alpha=lora_alpha
+                                )
+                                self.lora_modules.append(lora_mod)
 
-                            def _make_hook(l_mod):
-                                def _hook(module, args, output):
-                                    x_in = args[0]
-                                    delta = (
-                                        x_in.to(l_mod.lora_A.dtype)
-                                        @ l_mod.lora_A.t()
-                                        @ l_mod.lora_B.t()
-                                    ) * l_mod.scaling
-                                    return output + delta.to(output.dtype)
-                                return _hook
+                                def _make_hook(l_mod):
+                                    def _hook(module, args, output):
+                                        x_in = args[0]
+                                        delta = (
+                                            x_in.to(l_mod.lora_A.dtype)
+                                            @ l_mod.lora_A.t()
+                                            @ l_mod.lora_B.t()
+                                        ) * l_mod.scaling
+                                        return output + delta.to(output.dtype)
+                                    return _hook
 
-                            orig_linear.register_forward_hook(_make_hook(lora_mod))
+                                orig_linear.register_forward_hook(_make_hook(lora_mod))
 
-        # 3. Bottleneck Residual Adapters
+        # 3. Spatial Patch Attention Pooler (Prevents Geometric Collapse in Freehand Sketches)
+        if self.enable_patch_pooling:
+            self.spatial_pooler = SpatialAttentionPool(embed_dim)
+        else:
+            self.spatial_pooler = None
+
+        # 4. Bottleneck Residual Adapters (Zero-Initialized)
         self.sketch_adapter = BottleneckResidualAdapter(embed_dim, bottleneck_dim, res_scale)
         self.photo_adapter = BottleneckResidualAdapter(embed_dim, bottleneck_dim, res_scale)
         self.text_adapter = BottleneckResidualAdapter(embed_dim, bottleneck_dim, res_scale)
+
+    @staticmethod
+    def _extract_dual_tokens(visual: nn.Module, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Custom ViT forward pass extracting both [CLS] token and 49 Patch Tokens.
+        CLS Token captures high-level holistic semantics.
+        Patch Tokens capture fine-grained spatial stroke contours.
+        """
+        dtype = visual.conv1.weight.dtype
+        x = x.to(dtype)
+        x = visual.conv1(x)  # shape = [*, width, grid, grid]
+        x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
+        x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+        x = torch.cat(
+            [
+                visual.class_embedding.to(x.dtype)
+                + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device),
+                x,
+            ],
+            dim=1,
+        )
+        x = x + visual.positional_embedding.to(x.dtype)
+        x = visual.ln_pre(x)
+
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = visual.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+
+        cls_token = visual.ln_post(x[:, 0, :])
+        patch_tokens = visual.ln_post(x[:, 1:, :])
+
+        if visual.proj is not None:
+            cls_token = cls_token @ visual.proj
+            patch_tokens = patch_tokens @ visual.proj
+
+        return cls_token.float(), patch_tokens.float()
 
     @torch.no_grad()
     def encode_frozen_visual(self, img_tensor: torch.Tensor) -> torch.Tensor:
@@ -104,7 +164,17 @@ class AsymmetricHybridLoRACLIP(nn.Module):
         return F.normalize(feat, dim=-1)
 
     def encode_sketch(self, sketch_tensor: torch.Tensor) -> torch.Tensor:
-        """Full trainable forward pass for sketch images."""
+        """
+        Trainable forward pass for sketch images:
+        Fuses [CLS] semantic token with spatially pooled stroke patch tokens.
+        """
+        if self.enable_patch_pooling and self.spatial_pooler is not None and hasattr(self.sketch_visual, "conv1"):
+            cls_feat, patch_feats = self._extract_dual_tokens(self.sketch_visual, sketch_tensor)
+            pooled_patch = self.spatial_pooler(patch_feats)
+            fused_feat = F.normalize(cls_feat + self.patch_pool_weight * pooled_patch, dim=-1)
+            return self.sketch_adapter(fused_feat)
+
+        # Fallback for standard architectures without patch pooling
         dtype = (
             self.sketch_visual.conv1.weight.dtype
             if hasattr(self.sketch_visual, "conv1")
@@ -138,8 +208,7 @@ class AsymmetricHybridLoRACLIP(nn.Module):
     ) -> torch.Tensor:
         """
         Multimodal Sketch + Text Duet Retrieval (CVPR 2024 'You'll Never Walk Alone').
-        Fuses visual sketch representation with optional textual descriptions (e.g. 'red color', 'leather texture').
-        Formula: q_final = L2_Normalize(alpha * f_sketch + (1 - alpha) * f_text)
+        Fuses visual sketch representation with optional textual descriptions.
         """
         f_s = self.encode_sketch(sketch_tensor)
         if text_prompt is None or not text_prompt.strip() or clip_model is None or tokenize_fn is None:
@@ -151,9 +220,32 @@ class AsymmetricHybridLoRACLIP(nn.Module):
             raw_text = clip_model.encode_text(tokens).float()
         f_t = self.adapt_text_prototypes(raw_text)
 
-        # Vector fusion on hypersphere
         f_fused = alpha * f_s + (1.0 - alpha) * f_t
         return F.normalize(f_fused, dim=-1)
+
+    def forward(
+        self,
+        sketch_clean: Optional[torch.Tensor] = None,
+        photo_pos: Optional[torch.Tensor] = None,
+        photo_neg: Optional[torch.Tensor] = None,
+        sketch_pert: Optional[torch.Tensor] = None,
+        photo_pert: Optional[torch.Tensor] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Unified multi-tensor forward pass supporting DataParallel across multiple GPUs.
+        """
+        out: Dict[str, torch.Tensor] = {}
+        if sketch_clean is not None:
+            out["f_s_clean"] = self.encode_sketch(sketch_clean)
+        if photo_pos is not None:
+            out["f_p_pos"] = self.encode_photo(photo_pos)
+        if photo_neg is not None:
+            out["f_p_neg"] = self.encode_photo(photo_neg)
+        if sketch_pert is not None:
+            out["f_s_pert"] = self.encode_sketch(sketch_pert)
+        if photo_pert is not None:
+            out["f_p_pert"] = self.encode_photo(photo_pert)
+        return out
 
     def count_parameters(self) -> Dict[str, Any]:
         """Calculates total, trainable, and percentage ratio of parameters."""

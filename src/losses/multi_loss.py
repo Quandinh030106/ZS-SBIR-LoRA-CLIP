@@ -3,12 +3,11 @@
 """
 ================================================================================
 FILE: src/losses/multi_loss.py
-ROLE: Multi-Objective Loss Suite with In-Batch Semi-Hard Negative Mining & Dynamic Weighting
+ROLE: Multi-Objective Loss Suite with In-Batch Hard / Semi-Hard Negative Mining
 PROJECT: Zero-Shot & Generalized Sketch-Based Image Retrieval (CS331)
 ================================================================================
-Solves Technical Risks 2 & 3:
-  - In-Batch Semi-Hard Negative Mining prevents gradient starvation on easy negatives.
-  - Dynamic / bounded lambda_cls prevents over-clustering and preserves Zero-Shot capability.
+Loss Suite Formulation:
+  L_total = L_triplet + L_ntxent + lambda_cls * L_class + lambda_consist * L_consist
 """
 
 from typing import Dict, Tuple, Optional
@@ -19,13 +18,16 @@ import torch.nn.functional as F
 
 class SeCoLoRAMultiObjectiveLoss(nn.Module):
     """
-    Combined Loss Suite:
-      L_total = L_triplet + L_ntxent + lambda_cls * L_class + lambda_consist * L_consist
+    Combined Multi-Objective Loss Suite:
+      - In-Batch Hard / Semi-Hard Triplet Loss with Cosine Distance.
+      - Symmetric InfoNCE (NT-Xent) Contrastive Alignment across sketch-photo pairs.
+      - Seen Category Classification via CLIP Text Prototypes.
+      - Perturbation Invariance Consistency Loss.
     """
 
     def __init__(
         self,
-        margin: float = 0.3,
+        margin: float = 0.25,
         temp_ntxent: float = 0.07,
         temp_cls: float = 0.07,
         temp_consist: float = 0.07,
@@ -44,7 +46,7 @@ class SeCoLoRAMultiObjectiveLoss(nn.Module):
 
     @staticmethod
     def cosine_distance(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        """Pairwise cosine distance: 1 - <a, b> for normalized vectors."""
+        """Pairwise cosine distance: 1 - <a, b> for L2-normalized vectors."""
         return 1.0 - (a * b).sum(dim=-1)
 
     def compute_triplet_loss(
@@ -55,37 +57,32 @@ class SeCoLoRAMultiObjectiveLoss(nn.Module):
         labels: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Computes triplet loss with optional In-Batch Semi-Hard Negative Mining.
+        Computes triplet loss with in-batch hard or semi-hard negative mining.
         """
         d_pos = self.cosine_distance(f_s, f_p_pos)  # [B]
 
-        # In-Batch Mining when labels are provided and batch size > 1
-        if self.mining_mode == "semi_hard" and labels is not None and f_s.size(0) > 1:
+        if self.mining_mode in ("hard", "semi_hard") and labels is not None and f_s.size(0) > 1:
             B = f_s.size(0)
-            # Full similarity matrix between sketches and positive photos
             sim_mat = f_s @ f_p_pos.t()  # [B, B]
             d_all = 1.0 - sim_mat       # [B, B]
-
-            # Mask out same-class candidates: True where labels differ
             label_mask = labels.unsqueeze(0) != labels.unsqueeze(1)  # [B, B]
-
-            # Find semi-hard negatives: d_pos < d_neg < d_pos + margin
-            semi_hard_mask = (
-                label_mask
-                & (d_all > d_pos.unsqueeze(1))
-                & (d_all < (d_pos + self.margin).unsqueeze(1))
-            )
 
             d_neg_mined = []
             for i in range(B):
-                cand = d_all[i][semi_hard_mask[i]]
-                if cand.numel() > 0:
-                    # Pick the hardest among semi-hard (minimum distance to anchor)
-                    d_neg_mined.append(cand.min())
+                valid_negs = d_all[i][label_mask[i]]
+                if self.mining_mode == "hard" and valid_negs.numel() > 0:
+                    d_neg_mined.append(valid_negs.min())
                 else:
-                    # Fallback to hardest negative in batch
-                    valid_negs = d_all[i][label_mask[i]]
-                    if valid_negs.numel() > 0:
+                    # Semi-hard: d_pos < d_neg < d_pos + margin
+                    semi_hard_mask = (
+                        label_mask[i]
+                        & (d_all[i] > d_pos[i])
+                        & (d_all[i] < (d_pos[i] + self.margin))
+                    )
+                    cand = d_all[i][semi_hard_mask]
+                    if cand.numel() > 0:
+                        d_neg_mined.append(cand.min())
+                    elif valid_negs.numel() > 0:
                         d_neg_mined.append(valid_negs.min())
                     elif f_p_neg is not None:
                         d_neg_mined.append(self.cosine_distance(f_s[i], f_p_neg[i]))
@@ -95,7 +92,7 @@ class SeCoLoRAMultiObjectiveLoss(nn.Module):
             d_neg = torch.stack(d_neg_mined)
         else:
             if f_p_neg is None:
-                raise ValueError("f_p_neg must be provided when mining is disabled.")
+                raise ValueError("f_p_neg must be provided when in-batch mining is disabled.")
             d_neg = self.cosine_distance(f_s, f_p_neg)
 
         return F.relu(d_pos - d_neg + self.margin).mean()
@@ -154,7 +151,7 @@ class SeCoLoRAMultiObjectiveLoss(nn.Module):
         total_epochs: int = 15,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         """
-        Forward evaluation with dynamic loss balancing.
+        Forward evaluation with complete loss component logging.
         """
         l_tri = self.compute_triplet_loss(
             f_s_clean, f_p_pos_clean, f_p_neg_clean, labels=labels
@@ -163,8 +160,10 @@ class SeCoLoRAMultiObjectiveLoss(nn.Module):
         total = l_tri + l_ntx
 
         metrics = {
-            "loss_triplet": round(l_tri.item(), 4),
-            "loss_ntxent": round(l_ntx.item(), 4),
+            "loss_triplet": round(float(l_tri.item()), 4),
+            "loss_ntxent": round(float(l_ntx.item()), 4),
+            "loss_class": 0.0,
+            "loss_consist": 0.0,
         }
 
         # Dynamic class loss: scaled by lambda_cls
@@ -173,7 +172,7 @@ class SeCoLoRAMultiObjectiveLoss(nn.Module):
                 f_s_clean, f_p_pos_clean, text_prototypes, labels
             )
             total = total + self.lambda_cls * l_cls
-            metrics["loss_class"] = round(l_cls.item(), 4)
+            metrics["loss_class"] = round(float(l_cls.item()), 4)
 
         # Consistency regularization
         if f_s_pert is not None and self.lambda_consist > 0:
@@ -181,7 +180,7 @@ class SeCoLoRAMultiObjectiveLoss(nn.Module):
                 f_s_clean, f_s_pert, f_p_pos_clean, f_p_pert
             )
             total = total + self.lambda_consist * l_con
-            metrics["loss_consist"] = round(l_con.item(), 4)
+            metrics["loss_consist"] = round(float(l_con.item()), 4)
 
-        metrics["loss_total"] = round(total.item(), 4)
+        metrics["loss_total"] = round(float(total.item()), 4)
         return total, metrics

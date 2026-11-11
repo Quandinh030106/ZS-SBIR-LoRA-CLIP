@@ -9,6 +9,8 @@ outputs/checkpoints/*.pth
 outputs/cache/*.pt
 outputs/cache/*.npy
 outputs/eval_results/*.png
+outputs/*.png
+outputs/*.json
 outputs/metadata/
 *.pt
 *.pth

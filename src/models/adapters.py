@@ -3,7 +3,10 @@
 """
 ================================================================================
 FILE: src/models/adapters.py
-ROLE: Parameter-Efficient Fine-Tuning (PEFT) Components: LoRA & Residual Adapters
+ROLE: Parameter-Efficient Fine-Tuning (PEFT) Components:
+      - LowRankLinearAdapter (LoRA)
+      - BottleneckResidualAdapter (Zero-Init Residual)
+      - SpatialAttentionPool (Spatial Patch-Token Attention Pooling)
 PROJECT: Zero-Shot & Generalized Sketch-Based Image Retrieval (CS331)
 ================================================================================
 """
@@ -84,3 +87,26 @@ class BottleneckResidualAdapter(nn.Module):
         residual = self.fc2(self.act(self.fc1(x_fp32)))
         out = x_fp32 + self.res_scale * residual
         return F.normalize(out, dim=-1)
+
+
+class SpatialAttentionPool(nn.Module):
+    """
+    Learned Spatial Attention Pooling over ViT Patch Tokens (7x7=49 tokens in ViT-B/32).
+    Weights fine-grained local stroke contours (wings, wheels, windows, handles)
+    to prevent geometric collapse in freehand sketches.
+    Zero-initialization on projection layer ensures zero degradation at Epoch 0.
+    """
+
+    def __init__(self, embed_dim: int = 512):
+        super().__init__()
+        self.query = nn.Parameter(torch.randn(1, 1, embed_dim) * 0.02)
+        self.proj = nn.Linear(embed_dim, embed_dim)
+        nn.init.zeros_(self.proj.weight)
+        nn.init.zeros_(self.proj.bias)
+
+    def forward(self, patch_tokens: torch.Tensor) -> torch.Tensor:
+        # patch_tokens: [B, N, D] (e.g. [B, 49, 512])
+        scores = (patch_tokens @ self.query.transpose(-1, -2)).squeeze(-1)  # [B, N]
+        weights = F.softmax(scores, dim=-1).unsqueeze(-1)  # [B, N, 1]
+        pooled = (patch_tokens * weights).sum(dim=1)  # [B, D]
+        return self.proj(pooled)
