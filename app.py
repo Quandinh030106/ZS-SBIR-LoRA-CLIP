@@ -321,8 +321,8 @@ def extract_sketch_tensor(sketch_input: Optional[Any]) -> Optional[torch.Tensor]
     else:
         raw_img = raw_img.convert("RGB")
 
-    clean_sketch = PREPROCESSOR(raw_img)
-    tensor = TFS["sketch_clean"](clean_sketch).unsqueeze(0).to(DEVICE)
+    # Convert through SketchCVPreprocessor + ToTensor + Normalize (exact match with evaluation pipeline)
+    tensor = TFS["sketch_clean"](raw_img).unsqueeze(0).to(DEVICE)
     return tensor
 
 
