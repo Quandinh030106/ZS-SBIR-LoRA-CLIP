@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ==============================================================================
  * ZS-SBIR STUDIO — MODERN CLIENT-SIDE CONTROLLER
  * Full Interactive Canvas, API Client for Hugging Face Space & Demo Fallback
