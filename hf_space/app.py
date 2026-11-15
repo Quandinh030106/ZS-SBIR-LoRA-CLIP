@@ -236,6 +236,19 @@ def enrich_semantic_clue(raw_clue: Optional[str]) -> Optional[str]:
         return ", ".join(list(dict.fromkeys(expansions)))
     return text
 
+# Auto-extract full 12,500 photos archive if present
+photo_zip = proj_root / "sketchy_photos.zip"
+photo_extracted_dir = proj_root / "photos"
+if photo_zip.exists() and not photo_extracted_dir.exists():
+    try:
+        print(f"[SYSTEM] Phat hien {photo_zip.name}. Dang giai nen 12,500 anh vao {photo_extracted_dir}...")
+        import zipfile
+        with zipfile.ZipFile(str(photo_zip), 'r') as zf:
+            zf.extractall(str(photo_extracted_dir))
+        print("[SYSTEM] Giai nen 12,500 anh thanh cong!")
+    except Exception as e:
+        print(f"[WARNING] Khong the giai nen {photo_zip}: {e}")
+
 TFS = build_transforms(image_size=224)
 
 
@@ -337,6 +350,9 @@ def resolve_photo_path(original_path: str, class_name: str) -> Optional[str]:
     p = Path(original_path)
     if p.exists():
         return str(p)
+    cand_full = proj_root / "photos" / class_name / p.name
+    if cand_full.exists():
+        return str(cand_full)
     cand_dir = proj_root / "gallery_photos" / class_name
     if cand_dir.exists():
         cand_file = cand_dir / p.name
@@ -433,9 +449,15 @@ def api_retrieve(payload: RetrievePayload):
         best_idx = sim_text.argmax().item()
         pred_concept = PROTO_CLASSES_125[best_idx]
 
-    # Gallery selection
-    if "unseen" in payload.gallery_scope.lower():
+    # Gallery selection (3 scopes: unseen, seen/train, all)
+    scope_str = payload.gallery_scope.lower()
+    if "unseen" in scope_str:
         mask = DEFAULT_UNSEEN_MASK
+        base_feats = DEFAULT_GALLERY_FEATS[mask]
+        base_paths = [p for p, m in zip(DEFAULT_GALLERY_PATHS, mask.tolist()) if m]
+        base_classes = [c for c, m in zip(DEFAULT_GALLERY_CLASSES, mask.tolist()) if m]
+    elif "seen" in scope_str or "train" in scope_str:
+        mask = ~DEFAULT_UNSEEN_MASK
         base_feats = DEFAULT_GALLERY_FEATS[mask]
         base_paths = [p for p, m in zip(DEFAULT_GALLERY_PATHS, mask.tolist()) if m]
         base_classes = [c for c, m in zip(DEFAULT_GALLERY_CLASSES, mask.tolist()) if m]
@@ -533,8 +555,14 @@ def gradio_retrieve(sketch_input, sketch_upload, scope, clue):
         best_idx = sim_text.argmax().item()
         pred_label = translate_concept(PROTO_CLASSES_125[best_idx])
 
-    if "Unseen" in scope:
+    scope_str = scope.lower()
+    if "unseen" in scope_str:
         mask = DEFAULT_UNSEEN_MASK
+        base_feats = DEFAULT_GALLERY_FEATS[mask]
+        base_paths = [p for p, m in zip(DEFAULT_GALLERY_PATHS, mask.tolist()) if m]
+        base_classes = [c for c, m in zip(DEFAULT_GALLERY_CLASSES, mask.tolist()) if m]
+    elif "seen" in scope_str or "train" in scope_str:
+        mask = ~DEFAULT_UNSEEN_MASK
         base_feats = DEFAULT_GALLERY_FEATS[mask]
         base_paths = [p for p, m in zip(DEFAULT_GALLERY_PATHS, mask.tolist()) if m]
         base_classes = [c for c, m in zip(DEFAULT_GALLERY_CLASSES, mask.tolist()) if m]
@@ -645,7 +673,7 @@ with gr.Blocks(title="ZS-SBIR Studio — Zero-Shot Sketch-Based Image Retrieval"
             
             gr.Markdown("### 2. Thiết lập truy vấn")
             gallery_scope = gr.Radio(
-                choices=["Tập Unseen (2,100 ảnh - Zero-Shot chuẩn)", "Toàn bộ kho (12,500 ảnh)"],
+                choices=["Tập Unseen (2,100 ảnh - Zero-Shot chuẩn)", "Tập Seen / Train (10,400 ảnh - Tập đã học)", "Toàn bộ kho (12,500 ảnh)"],
                 value="Tập Unseen (2,100 ảnh - Zero-Shot chuẩn)",
                 label="Phạm vi tìm kiếm"
             )
