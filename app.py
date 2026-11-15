@@ -239,15 +239,41 @@ def enrich_semantic_clue(raw_clue: Optional[str]) -> Optional[str]:
 # Auto-extract full 12,500 photos archive if present
 photo_zip = proj_root / "sketchy_photos.zip"
 photo_extracted_dir = proj_root / "photos"
-if photo_zip.exists() and not photo_extracted_dir.exists():
-    try:
-        print(f"[SYSTEM] Phat hien {photo_zip.name}. Dang giai nen 12,500 anh vao {photo_extracted_dir}...")
-        import zipfile
-        with zipfile.ZipFile(str(photo_zip), 'r') as zf:
-            zf.extractall(str(photo_extracted_dir))
-        print("[SYSTEM] Giai nen 12,500 anh thanh cong!")
-    except Exception as e:
-        print(f"[WARNING] Khong the giai nen {photo_zip}: {e}")
+if not photo_extracted_dir.exists():
+    if photo_zip.exists():
+        try:
+            print(f"[SYSTEM] Phat hien {photo_zip.name}. Dang giai nen 12,500 anh...")
+            import zipfile
+            with zipfile.ZipFile(str(photo_zip), 'r') as zf:
+                zf.extractall(str(photo_extracted_dir))
+            print("[SYSTEM] Giai nen 12,500 anh thanh cong!")
+        except Exception as e:
+            print(f"[WARNING] Khong the giai nen {photo_zip}: {e}")
+    else:
+        try:
+            from huggingface_hub import hf_hub_download
+            print("[SYSTEM] Dang ket noi tai 12,500 anh that tu Dataset quan030106/sketchy_photos...")
+            downloaded_zip = None
+            for ds_repo in ["quan030106/sketchy_photos", "quan030106/sketchy-photos"]:
+                try:
+                    downloaded_zip = hf_hub_download(
+                        repo_id=ds_repo,
+                        filename="sketchy_photos.zip",
+                        repo_type="dataset"
+                    )
+                    if downloaded_zip:
+                        break
+                except Exception:
+                    continue
+            if downloaded_zip:
+                import zipfile
+                with zipfile.ZipFile(downloaded_zip, 'r') as zf:
+                    zf.extractall(str(photo_extracted_dir))
+                print("[SYSTEM] Tai va giai nen 12,500 anh that thanh cong vao photos/!")
+            else:
+                print("[INFO] Chua tim thay dataset zip. Su dung bo anh gallery mac dinh.")
+        except Exception as e:
+            print(f"[INFO] Chua ket noi duoc dataset ({e}). Su dung bo anh gallery mac dinh.")
 
 TFS = build_transforms(image_size=224)
 

@@ -361,14 +361,18 @@
     if (e.dataTransfer.files.length > 0) handleSketchFile(e.dataTransfer.files[0]);
   });
 
-  // Custom RAM gallery dropzone
-  dropzoneCustom.addEventListener("click", () => fileInputCustom.click());
-  fileInputCustom.addEventListener("change", (e) => {
-    if (e.target.files.length > 0) {
-      state.customGalleryCount += e.target.files.length;
-      customStatusText.textContent = `Trạng thái bộ nhớ: 12,500 ảnh chuẩn • +${state.customGalleryCount} ảnh tùy chỉnh trong RAM`;
-    }
-  });
+  // Custom RAM gallery dropzone (optional)
+  if (dropzoneCustom && fileInputCustom) {
+    dropzoneCustom.addEventListener("click", () => fileInputCustom.click());
+    fileInputCustom.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        state.customGalleryCount += e.target.files.length;
+        if (customStatusText) {
+          customStatusText.textContent = `Trạng thái bộ nhớ: 12,500 ảnh chuẩn • +${state.customGalleryCount} ảnh tùy chỉnh trong RAM`;
+        }
+      }
+    });
+  }
 
   // --- 6. TAB SWITCHING ---
   document.querySelectorAll(".tab-btn").forEach((btn) => {
