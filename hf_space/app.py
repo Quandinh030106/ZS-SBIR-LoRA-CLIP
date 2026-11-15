@@ -38,6 +38,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+# ZeroGPU Support
+try:
+    import spaces
+    gpu_decorator = spaces.GPU
+    print('[SYSTEM] ZeroGPU Hardware detected. GPU dynamic decorator enabled.')
+except Exception:
+    gpu_decorator = lambda f: f
+
 
 # Project root setup
 proj_root = Path(__file__).resolve().parent
@@ -393,6 +401,7 @@ def api_health():
     }
 
 @fastapi_app.post("/api/retrieve")
+@gpu_decorator
 def api_retrieve(payload: RetrievePayload):
     t_start = time.time()
     try:
@@ -453,6 +462,7 @@ def api_retrieve(payload: RetrievePayload):
     }
 
 @fastapi_app.post("/api/classify")
+@gpu_decorator
 def api_classify(payload: ClassifyPayload):
     t_start = time.time()
     try:
@@ -493,6 +503,7 @@ def api_classify(payload: ClassifyPayload):
 # 5. GRADIO APPLICATION INTERFACE
 # -----------------------------------------------------------------------------
 
+@gpu_decorator
 def gradio_retrieve(sketch_input, sketch_upload, scope, clue):
     t_start = time.time()
     active_sketch = sketch_upload if sketch_upload is not None else sketch_input
@@ -540,6 +551,7 @@ def gradio_retrieve(sketch_input, sketch_upload, scope, clue):
     elapsed = f"{(time.time() - t_start) * 1000.0:.1f} ms"
     return pred_label, max_sim_text, elapsed, results_grid
 
+@gpu_decorator
 def gradio_classify(sketch_input, sketch_upload, clue):
     t_start = time.time()
     active_sketch = sketch_upload if sketch_upload is not None else sketch_input
