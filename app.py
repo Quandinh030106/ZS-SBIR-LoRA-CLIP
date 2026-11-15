@@ -333,6 +333,20 @@ def encode_query_representation(
 
     return q_feat
 
+def resolve_photo_path(original_path: str, class_name: str) -> Optional[str]:
+    p = Path(original_path)
+    if p.exists():
+        return str(p)
+    cand_dir = proj_root / "gallery_photos" / class_name
+    if cand_dir.exists():
+        cand_file = cand_dir / p.name
+        if cand_file.exists():
+            return str(cand_file)
+        all_photos = list(cand_dir.glob("*.jpg"))
+        if all_photos:
+            return str(all_photos[0])
+    return None
+
 def image_to_base64_thumb(path_or_img: Any, max_size=(160, 160)) -> Optional[str]:
     try:
         if isinstance(path_or_img, str):
@@ -443,7 +457,8 @@ def api_retrieve(payload: RetrievePayload):
         c_name = base_classes[idx_val]
         p_path = base_paths[idx_val]
         sim_val = float(score.item())
-        thumb = image_to_base64_thumb(p_path)
+        real_path = resolve_photo_path(p_path, c_name)
+        thumb = image_to_base64_thumb(real_path or p_path)
         results.append({
             "rank": rank,
             "class": c_name,
