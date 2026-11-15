@@ -1,0 +1,23 @@
+# ============================================================
+# Dataset Configuration: TU-Berlin Extended Dataset
+# ============================================================
+
+dataset:
+  name: "tuberlin"
+  root: "data/tuberlin"
+
+  # Cấu trúc thư mục của TU-Berlin Extended
+  photo_root: "ImageResized"    # or 'images'
+  sketch_root: "png"            # 20,000 sketches (80 sketches per category)
+
+  total_classes: 250
+
+  # Protocol:
+  # 'tuberlin': 220 Seen / 30 Unseen
+  # 'cross_dataset': Đánh giá trực tiếp toàn bộ 250 classes từ model train trên Sketchy
+  split_protocol: "tuberlin"
+
+preprocessing:
+  image_size: 224
+  pad_ratio: 0.08
+  min_contour_area: 15.0

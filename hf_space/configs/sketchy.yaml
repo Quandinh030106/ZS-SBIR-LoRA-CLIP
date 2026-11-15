@@ -1,0 +1,84 @@
+# ============================================================
+# Dataset Configuration: Sketchy Database (256x256)
+# ============================================================
+
+dataset:
+  name: "sketchy"
+  root: "data"
+
+  # Thư mục chuẩn cần dùng (canonical transform - theo benchmark chuẩn)
+  canonical_tx: "tx_000000000000"
+
+  # Cấu trúc thư mục ảnh photo (đường dẫn thực tế sau khi giải nén)
+  photo_root: "temp_extraction/256x256/photo/{canonical_tx}"  # {canonical_tx} sẽ được thay tự động
+
+  # Cấu trúc thư mục sketch (đã được chia sẵn train/test)
+  sketch_train_root: "temp_extraction/256x256/splitted_sketches/train/{canonical_tx}"
+  sketch_test_root:  "temp_extraction/256x256/splitted_sketches/test/{canonical_tx}"
+
+  # Quy tắc ghép cặp sketch -> photo
+  # Tên file sketch:   {photo_id}-{sketch_num}.png   (ví dụ: n02691156_10151-1.png)
+  # Tên file photo:    {photo_id}.jpg                (ví dụ: n02691156_10151.jpg)
+  sketch_suffix: ".png"
+  photo_suffix: ".jpg"
+  pair_separator: "-"   # Ký tự ngăn cách giữa photo_id và sketch_num
+
+  # Số lượng class
+  total_classes: 125
+
+  # Giao thức Zero-Shot (chia seen/unseen)
+  zero_shot:
+    enabled: true
+    seen_classes: 100
+    unseen_classes: 25
+    # File chứa danh sách 25 unseen classes (sẽ được tạo tự động bởi script)
+    split_file: "configs/sketchy_zs_split.json"
+
+# ============================================================
+# Preprocessing Configuration
+# ============================================================
+preprocessing:
+  image_size: 224          # Kích thước đầu vào của CLIP ViT-B/32
+
+  sketch:
+    channels: 3            # Chuyển grayscale -> RGB (sao chép 3 kênh)
+    tight_crop: true       # Cắt sát nét vẽ, loại bỏ viền trắng thừa
+    padding_ratio: 0.1     # Thêm viền trắng 10% sau khi tight-crop
+    invert_if_dark_bg: true # Tự động đảo màu nếu nền tối nét sáng
+
+  photo:
+    channels: 3            # Ảnh RGB thông thường
+
+  # CLIP normalization (bắt buộc dùng đúng giá trị này)
+  normalize:
+    mean: [0.48145466, 0.4578275, 0.40821073]
+    std:  [0.26862954, 0.26130258, 0.27577711]
+
+# ============================================================
+# Augmentation (Chỉ áp dụng khi training)
+# ============================================================
+augmentation:
+  sketch:
+    random_erasing:
+      enabled: true
+      p: 0.5               # Xác suất áp dụng
+      scale: [0.02, 0.20]  # Diện tích vùng bị xóa: 2% - 20% ảnh
+      ratio: [0.5, 2.0]    # Tỉ lệ chiều rộng/cao vùng xóa
+      value: 1.0           # QUAN TRỌNG: 1.0 = màu trắng (màu nền giấy vẽ)
+
+    horizontal_flip:
+      enabled: true
+      p: 0.3
+
+    color_jitter:
+      enabled: false       # Không cần với sketch grayscale
+
+  photo:
+    horizontal_flip:
+      enabled: true
+      p: 0.5
+    color_jitter:
+      enabled: true
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.1

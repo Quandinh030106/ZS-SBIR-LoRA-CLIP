@@ -25,12 +25,32 @@ archive.zip
 
 # Reference Repos & Temp Files
 reference_repo/
+Samples Paper/
 temp_extraction/
 .ipynb_checkpoints/
 *.egg-info/
 .pytest_cache/
 .vscode/
 .idea/
+
+# LaTeX auxiliary files (keep only .tex and final .pdf in docs/)
+*.aux
+*.log
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Vercel & Web Build Artifacts
+node_modules/
+dist/
+.vercel/
+.next/
 
 # OS specific
 .DS_Store

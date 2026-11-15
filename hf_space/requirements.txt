@@ -1,0 +1,11 @@
+﻿torch>=2.0.0
+torchvision>=0.15.0
+ftfy
+regex
+tqdm
+Pillow
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+gradio>=4.44.0
+git+https://github.com/openai/CLIP.git

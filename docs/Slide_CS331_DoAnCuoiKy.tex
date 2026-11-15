@@ -1,0 +1,594 @@
+\documentclass[aspectratio=169, 10pt]{beamer}
+
+% ==============================================================================
+% GÓI NGÔN NGỮ & PHÔNG CHỮ TIẾNG VIỆT
+% ==============================================================================
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese,english]{babel}
+\usepackage[T1,T5]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsfonts,bm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\graphicspath{{./}{outputs/}{outputs/eval_results/}{eval_results/}{../outputs/}}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows, positioning, calc}
+\usepackage{hyperref}
+
+% ==============================================================================
+% THIẾT KẾ GIAO DIỆN TỐI GIẢN (MINIMALISM CORPORATE / TECH STYLE)
+% ==============================================================================
+\definecolor{techNavy}{RGB}{15, 30, 54}      % Xanh than đậm
+\definecolor{techBlue}{RGB}{2, 132, 199}     % Xanh cyan hiện đại
+\definecolor{techSlate}{RGB}{71, 85, 105}    % Xám slate
+\definecolor{techBg}{RGB}{250, 250, 250}     % Nền slide trắng ngà
+\definecolor{techCard}{RGB}{255, 255, 255}   % Nền thẻ trắng tinh
+\definecolor{techBorder}{RGB}{226, 232, 240} % Viền xám nhạt
+\definecolor{techGreen}{RGB}{16, 149, 106}   % Xanh lá thành công
+\definecolor{techRed}{RGB}{225, 29, 72}      % Đỏ cảnh báo
+
+\setbeamercolor{background canvas}{bg=techBg}
+\setbeamercolor{normal text}{fg=techNavy}
+\setbeamercolor{frametitle}{fg=techNavy, bg=techBg}
+\setbeamercolor{title}{fg=techNavy}
+\setbeamercolor{subtitle}{fg=techBlue}
+\setbeamercolor{author}{fg=techSlate}
+\setbeamercolor{institute}{fg=techSlate}
+\setbeamercolor{date}{fg=techSlate}
+
+\setbeamertemplate{navigation symbols}{}
+
+% Tiêu đề slide tối giản
+\setbeamertemplate{frametitle}{
+    \vspace{0.35cm}
+    \begin{beamercolorbox}[wd=\paperwidth,leftskip=0.8cm,rightskip=0.8cm]{frametitle}
+        {\usebeamerfont{frametitle}\textbf{\color{techNavy}\insertframetitle}}\\[0.04cm]
+        {\color{techBlue}\rule{3.2cm}{1.0pt}}\\[-0.15cm]
+    \end{beamercolorbox}
+}
+
+% Thanh chân trang
+\setbeamertemplate{footline}{
+    \leavevmode%
+    \hbox{%
+    \begin{beamercolorbox}[wd=.6\paperwidth,ht=2.5ex,dp=1.1ex,leftskip=0.8cm]{author in head/foot}%
+        \footnotesize\color{techSlate}\textit{CS331 -- Báo cáo Đồ án | Đinh Phạm Anh Quân \& Phạm Tường Quân}
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.4\paperwidth,ht=2.5ex,dp=1.1ex,rightskip=0.8cm]{title in head/foot}%
+        \raggedleft\footnotesize\color{techSlate}\insertframenumber{} / \inserttotalframenumber
+    \end{beamercolorbox}}%
+    \vskip3pt%
+}
+
+\setbeamertemplate{itemize item}{\color{techBlue}$\blacktriangleright$}
+\setbeamertemplate{itemize subitem}{\color{techSlate}$-$}
+
+% Hộp thông tin dạng thẻ
+\newcommand{\techbox}[3]{
+    \begin{center}
+    \begin{tikzpicture}
+        \node [draw=#1, fill=techCard, rounded corners=3pt, line width=0.8pt, inner sep=7pt, text width=0.92\textwidth] {
+            {\textbf{\color{#1}#2}}\\[0.1cm]
+            \footnotesize\color{techNavy}#3
+        };
+    \end{tikzpicture}
+    \end{center}
+}
+
+% ==============================================================================
+% THÔNG TIN ĐỒ ÁN
+% ==============================================================================
+\title{\textbf{\LARGE Zero-Shot \& Open-World SBIR}}
+\subtitle{\large Truy hồi hình ảnh từ bản vẽ phác thảo qua kiến trúc Asymmetric LoRA-CLIP}
+
+\author{
+    \textbf{Sinh viên thực hiện:}\\[0.08cm]
+    Đinh Phạm Anh Quân (24521425) \quad---\quad Phạm Tường Quân (24521451)\\[0.15cm]
+    \textbf{Giảng viên hướng dẫn:} Thầy Mai Tiến Dũng
+}
+
+\institute{
+    Khoa Khoa học Máy tính -- Trường Đại học Công nghệ Thông tin (ĐHQG-HCM)\\[0.05cm]
+    \textbf{Môn học:} CS331 -- Thị giác máy tính nâng cao
+}
+\date{Tháng 11 Năm 2026}
+
+% ==============================================================================
+% BẮT ĐẦU SLIDES
+% ==============================================================================
+\begin{document}
+\selectlanguage{vietnamese}
+
+% ------------------------------------------------------------------------------
+% SLIDE 1: TRANG TIÊU ĐỀ
+% ------------------------------------------------------------------------------
+\begin{frame}[plain]
+    \vspace{0.6cm}
+    \begin{center}
+        {\small\color{techSlate}\textbf{TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN -- ĐHQG-HCM}}\\[0.04cm]
+        {\footnotesize\color{techSlate}KHOA KHOA HỌC MÁY TÍNH -- BỘ MÔN THỊ GIÁC MÁY TÍNH NÂNG CAO}\\[0.35cm]
+        
+        \rule{0.82\textwidth}{0.8pt}\\[0.3cm]
+        {\Large\textbf{\color{techNavy}TRUY HỒI HÌNH ẢNH DỰA TRÊN BẢN VẼ PHÁC THẢO}}\\[0.12cm]
+        {\large\textbf{\color{techBlue}ZERO-SHOT VÀ THẾ GIỚI MỞ QUA KIẾN TRÚC ASYMMETRIC LORA-CLIP}}\\[0.18cm]
+        \rule{0.82\textwidth}{0.8pt}\\[0.35cm]
+
+        \begin{columns}[c]
+            \begin{column}{0.5\textwidth}
+                \small
+                \textbf{Sinh viên thực hiện:}\\
+                1. Đinh Phạm Anh Quân -- 24521425\\
+                2. Phạm Tường Quân -- 24521451
+            \end{column}
+            \begin{column}{0.45\textwidth}
+                \small
+                \textbf{Giảng viên hướng dẫn:}\\
+                Thầy Mai Tiến Dũng\\[0.12cm]
+                \textbf{Mã nguồn (GitHub):}\\
+                {\footnotesize\url{github.com/Quandinh030106/ZS-SBIR-LoRA-CLIP}}
+            \end{column}
+        \end{columns}
+        
+        \vspace{0.35cm}
+        {\footnotesize\color{techSlate}Báo cáo Đồ án Cuối kỳ CS331 -- Học kỳ I, Năm học 2026--2027}
+    \end{center}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 2: ĐẶT VẤN ĐỀ VÀ THÁCH THỨC BÀI TOÁN
+% ------------------------------------------------------------------------------
+\begin{frame}{1. Đặt vấn đề và Thách thức cốt lõi}
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{Bài toán SBIR \& Kịch bản Zero-Shot}{
+                \begin{itemize}
+                    \item \textbf{Mục tiêu:} Dùng nét vẽ phác thảo tay (sketch) làm truy vấn để tìm ảnh chụp thực tế (photo) tương ứng trong kho dữ liệu.
+                    \item \textbf{Zero-Shot (ZS-SBIR):} Tập danh mục lúc kiểm thử hoàn toàn mới lạ ($C_{\text{unseen}} \cap C_{\text{seen}} = \emptyset$).
+                    \item \textbf{Yêu cầu:} Mô hình không học vẹt các lớp Seen mà phải tổng quát hóa cấu trúc sang lớp mới.
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techRed}{Hai rào cản kỹ thuật lớn nhất}{
+                \begin{itemize}
+                    \item \textbf{Lệch miền dị thể (Domain Gap):} Bản vẽ tay chỉ có nét đơn sắc thưa thớt (sparse contour), thiếu màu sắc, kết cấu và bóng đổ so với ảnh RGB đa kênh.
+                    \item \textbf{Quên tri thức (Catastrophic Forgetting):} Nếu fine-tune toàn bộ trọng số của CLIP gốc, không gian đa phương tiện 400 triệu ảnh sẽ bị phá vỡ, làm mất năng lực Open-World.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 3: HIỆN TƯỢNG SỤP ĐỔ HÌNH HỌC (GEOMETRIC AMBIGUITY)
+% ------------------------------------------------------------------------------
+\begin{frame}{2. Hiện tượng Sụp đổ hình học trong Vision Transformer}
+    \begin{columns}[c]
+        \begin{column}{0.5\textwidth}
+            \techbox{techRed}{Hạn chế khi chỉ dùng token ngữ nghĩa [CLS]}{
+                \begin{itemize}
+                    \item Vision Transformer gốc của CLIP nén toàn bộ ảnh vào một vector duy nhất tại vị trí $[CLS]$.
+                    \item Đối với nét vẽ trừu tượng, việc ép toàn bộ vào $[CLS]$ làm \textbf{san phẳng cấu trúc hình học cục bộ}.
+                    \item \textbf{Hậu quả thực tế:} Mô hình nhầm lẫn các vật thể có dáng thuôn dài tương tự (ví dụ: máy bay bị nhầm sang khinh khí cầu do mất chi tiết cánh và đuôi).
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.46\textwidth}
+            \techbox{techGreen}{Giải pháp: Khai thác 49 Patch Tokens}{
+                \begin{itemize}
+                    \item Ngoài $[CLS]$, giữ lại toàn bộ lưới $7 \times 7 = 49$ patch tokens không gian từ tầng cuối cùng.
+                    \item Áp dụng cơ chế \textbf{Spatial Attention Pooling} để học cách gộp có trọng số các vùng nét vẽ quan trọng.
+                    \item Kết hợp đặc trưng toàn cục $[CLS]$ và đặc trưng cục bộ patch, bảo toàn chi tiết hình học của nét vẽ.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 4: TỔNG QUAN KIẾN TRÚC ASYMMETRIC HYBRID LORA-CLIP
+% ------------------------------------------------------------------------------
+\begin{frame}{3. Kiến trúc Đề xuất: Asymmetric Hybrid LoRA-CLIP}
+    \begin{center}
+    \resizebox{0.92\textwidth}{!}{%
+    \begin{tikzpicture}[node distance=1.1cm, auto, >=latex]
+        \node [draw=techNavy, fill=techCard, rounded corners=3pt, text width=3.8cm, align=center, line width=0.8pt] (photo_in) {\textbf{Ảnh chụp thực tế (Photo)}\\$\mathbf{x}_p \in \mathbb{R}^{3 \times 224 \times 224}$};
+        \node [draw=techSlate, fill=gray!10, rounded corners=3pt, text width=4.5cm, align=center, right=1.2cm of photo_in, line width=0.8pt] (photo_enc) {\textbf{Photo Tower (Đóng băng 100\%)}\\Frozen CLIP ViT-B/32\\+ Bottleneck Residual Adapter};
+        \node [draw=techNavy, fill=techBlue!10, rounded corners=3pt, text width=3.0cm, align=center, right=1.2cm of photo_enc, line width=0.8pt] (photo_feat) {\textbf{Photo Vector}\\$\mathbf{f}_p \in \mathbb{R}^{512}$ ($\ell_2$-norm)};
+
+        \node [draw=techNavy, fill=techCard, rounded corners=3pt, text width=3.8cm, align=center, below=1.2cm of photo_in, line width=0.8pt] (sketch_in) {\textbf{Bản vẽ phác thảo (Sketch)}\\$\mathbf{x}_s \to \texttt{SketchCV}$};
+        \node [draw=techBlue, fill=blue!5, rounded corners=3pt, text width=4.5cm, align=center, right=1.2cm of sketch_in, line width=1.0pt] (sketch_enc) {\textbf{Sketch Tower (Chỉ train 0.78\%)}\\CLIP ViT-B/32 + LoRA ($r=16$)\\+ Unfreeze LN + Spatial Pooler};
+        \node [draw=techNavy, fill=techBlue!10, rounded corners=3pt, text width=3.0cm, align=center, right=1.2cm of sketch_enc, line width=0.8pt] (sketch_feat) {\textbf{Sketch Vector}\\$\mathbf{f}_s \in \mathbb{R}^{512}$ ($\ell_2$-norm)};
+
+        \node [draw=techGreen, fill=green!10, rounded corners=4pt, text width=2.4cm, align=center, below=0.45cm of photo_feat, line width=1.0pt] (sim) {\textbf{Cosine Similarity}\\$\cos(\mathbf{f}_s, \mathbf{f}_p)$};
+
+        \draw [->, thick, techSlate] (photo_in) -- (photo_enc);
+        \draw [->, thick, techSlate] (photo_enc) -- (photo_feat);
+        \draw [->, thick, techBlue] (sketch_in) -- (sketch_enc);
+        \draw [->, thick, techBlue] (sketch_enc) -- (sketch_feat);
+        \draw [->, thick, techNavy] (photo_feat) -- (sim);
+        \draw [->, thick, techNavy] (sketch_feat) -- (sim);
+    \end{tikzpicture}%
+    }
+    \end{center}
+    \vspace{-0.15cm}
+    \begin{itemize}
+        \item \textbf{Nguyên lý bất đối xứng:} Nhánh Photo cố định hoàn toàn để bảo vệ tri thức 400 triệu ảnh; nhánh Sketch được trang bị LoRA và LayerNorm mở khóa để học chuyển đổi miền nét vẽ với chi phí tính toán cực thấp.
+    \end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 5: TIỀN XỬ LÝ THỊ GIÁC CHUYÊN BIỆT (SKETCHCVPREPROCESSOR)
+% ------------------------------------------------------------------------------
+\begin{frame}{4. Tiền xử lý Thị giác Chuyên biệt (SketchCVPreprocessor)}
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{Lọc nhiễu \& Căn chỉnh khung hình}{
+                \begin{itemize}
+                    \item \textbf{Lọc chấm chuột vô tình (Stray-Click Filtering):} Tính diện tích đường bao liên thông; tự động xóa các chấm có diện tích $< 15\text{ px}$.
+                    \item \textbf{Cắt sát biên và đệm 1:1 (Tight-Crop \& Padding):} Tìm bounding box thực sự của nét vẽ, phóng to để nét vẽ chiếm $65\% - 75\%$ khung hình $224 \times 224$, loại bỏ mảng trắng rỗng vô ích.
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techBlue}{Tăng cường dữ liệu chống quá khớp}{
+                \begin{itemize}
+                    \item \textbf{Mô phỏng bản vẽ dở dang (Partial Masking 35\%):} Xóa ngẫu nhiên $30\% - 50\%$ nét vẽ để ép mô hình nhận diện được vật thể khi người dùng mới vẽ một phần.
+                    \item \textbf{Mô phỏng run tay (Stroke Jitter 25\%):} Dịch chuyển ngẫu nhiên tọa độ các điểm nét vẽ để giả lập độ rung tay trên màn hình cảm ứng.
+                    \item \textbf{Biến thiên độ dày nét (Morphological Dilation):} Co giãn ngẫu nhiên độ dày nét vẽ để mô hình học cấu trúc khung xương đối tượng.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 6: CƠ CHẾ SPATIAL PATCH ATTENTION POOLING
+% ------------------------------------------------------------------------------
+\begin{frame}{5. Cơ chế Spatial Patch Attention Pooling}
+    \begin{columns}[t]
+        \begin{column}{0.5\textwidth}
+            \techbox{techNavy}{Trích xuất \& Học chú ý không gian}{
+                \begin{itemize}
+                    \item Trích xuất lưới đặc trưng patch tầng cuối:
+                    $$\mathbf{Z}_{\text{patch}} \in \mathbb{R}^{49 \times 768} \quad (7 \times 7 \text{ grid})$$
+                    \item Tính điểm chú ý không gian (Spatial Attention):
+                    $$\mathbf{a} = \text{Softmax}\left( \frac{\mathbf{Z}_{\text{patch}} \mathbf{w}_{\text{query}}}{\sqrt{768}} \right) \in \mathbb{R}^{49}$$
+                    \item Vector đặc trưng patch tổng hợp:
+                    $$\mathbf{t}_{\text{patch}} = \sum_{i=1}^{49} a_i \mathbf{z}_i \in \mathbb{R}^{768}$$
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.46\textwidth}
+            \techbox{techGreen}{Dung hợp đặc trưng kép}{
+                \begin{itemize}
+                    \item Ghép nối vector toàn cục $[CLS]$ và vector vùng nét vẽ $\mathbf{t}_{\text{patch}}$:
+                    $$\mathbf{t}_{\text{fused}} = [\mathbf{t}_{\text{CLS}} \,\|\, \mathbf{t}_{\text{patch}}] \in \mathbb{R}^{1536}$$
+                    \item Chiếu về không gian nhúng 512D:
+                    $$\mathbf{f}_s = \text{Normalize}\left( \mathbf{W}_{\text{fuse}} \mathbf{t}_{\text{fused}} + \mathbf{b} \right)$$
+                    \item \textbf{Lợi ích:} Kết hợp hoàn hảo giữa nhận diện danh mục ngữ nghĩa và định vị chi tiết đường biên.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 7: HỆ THỐNG HÀM MẤT MÁT ĐA MỤC TIÊU & SEMI-HARD MINING
+% ------------------------------------------------------------------------------
+\begin{frame}{6. Hàm mất mát Đa mục tiêu \& Khai phá mẫu âm tính khó}
+    Hàm mục tiêu tổng quát kết hợp 4 thành phần tối ưu:
+    $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{triplet}} + \mathcal{L}_{\text{ntxent}} + \lambda_{\text{cls}} \mathcal{L}_{\text{cls}} + \lambda_{\text{consist}} \mathcal{L}_{\text{consist}}$$
+    
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{1. In-Batch Semi-Hard Triplet Mining}{
+                \begin{itemize}
+                    \item Thay vì chọn mẫu âm tính ngẫu nhiên (dễ bị bão hòa gradient 0), quét toàn bộ batch để lọc các mẫu Semi-Hard:
+                    $$d(\mathbf{f}_s, \mathbf{f}_p^+) < d(\mathbf{f}_s, \mathbf{f}_p^-) < d(\mathbf{f}_s, \mathbf{f}_p^+) + m$$
+                    \item Áp dụng biên độ cách biệt $m = 0.25$.
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techSlate}{2. InfoNCE, Class \& Consistency}{
+                \begin{itemize}
+                    \item \textbf{Symmetric InfoNCE ($\tau=0.07$):} Tối ưu hóa phân phối tương đồng hai chiều.
+                    \item \textbf{Seen Classification ($\lambda=0.3$):} Neo ngữ nghĩa với Text Prototypes của 104 lớp Seen.
+                    \item \textbf{Perturbation Consistency ($\lambda=1.0$):} Ép vector của nét vẽ sạch và nét vẽ nhiễu phải tương đồng.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 8: QUÁ TRÌNH TINH CHỈNH VÀ TỐI ƯU SIÊU THAM SỐ
+% ------------------------------------------------------------------------------
+\begin{frame}{7. Quá trình Tinh chỉnh Siêu tham số (Hyperparameter Tuning)}
+    \begin{center}
+    \resizebox{0.95\textwidth}{!}{%
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Thành phần kỹ thuật} & \textbf{Cấu hình ban đầu} & \textbf{Cấu hình tối ưu} & \textbf{Lý do thay đổi kỹ thuật} & \textbf{Hiệu quả thực tế} \\
+        \midrule
+        Hạng thích ứng LoRA ($r$) & $r = 8, \alpha = 16.0$ & $\mathbf{r = 16, \alpha = 32.0}$ & Tăng dung lượng tham số học nét vẽ & mAP@all $+5.4\%$ \\
+        Mở khóa LayerNorm & Đóng băng toàn bộ & $\mathbf{\text{Unfreeze LayerNorm}}$ & Cân bằng thống kê phân phối RGB / nhị phân & Hội tụ nhanh gấp $2\times$ \\
+        Negative Mining & Random Negative & $\mathbf{\text{In-Batch Semi-Hard}}$ & Loại bỏ mẫu âm quá dễ gây triệt tiêu gradient & mAP@200 $+7.1\%$ \\
+        Token trích xuất & Duy nhất $[CLS]$ & $\mathbf{[CLS] + 49\text{ Patch Tokens}}$ & Khắc phục hiện tượng sụp đổ hình học & Acc@1 FG $+2.9\times$ \\
+        Tốc độ học (Learning Rate) & $1 \times 10^{-4}$ & $\mathbf{2 \times 10^{-5}\text{ (Cosine)}}$ & Tránh phá vỡ trọng số tiền huấn luyện & Triệt tiêu dao động \\
+        Kích thước ảnh & $224 \times 224$ (Resize méo) & $\mathbf{224 \times 224\text{ (Tight-Crop 1:1)}}$ & Giữ nguyên tỷ lệ khung xương đối tượng & Giảm sai số biên \\
+        \bottomrule
+    \end{tabular}%
+    }
+    \end{center}
+    
+    \vspace{0.2cm}
+    \techbox{techNavy}{Nguyên lý cốt lõi}{
+        Mỗi sự thay đổi siêu tham số đều dựa trên phân tích động học gradient và bản chất dữ liệu, đảm bảo quá trình tối ưu diễn ra có cơ sở khoa học rõ ràng.
+    }
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 9: THIẾT LẬP THỰC NGHIỆM TRÊN 2x TESLA T4
+% ------------------------------------------------------------------------------
+\begin{frame}{8. Thiết lập Thực nghiệm \& Pipeline Kaggle 2x NVIDIA T4}
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{Giao thức Dữ liệu Split 2 (Yelamarthi 2018)}{
+                \begin{itemize}
+                    \item \textbf{Tập dữ liệu chuẩn:} Sketchy Database (125 danh mục).
+                    \item \textbf{Seen Classes (104 lớp huấn luyện):} 10,400 ảnh chụp thực tế và 62,901 bản vẽ phác thảo.
+                    \item \textbf{Unseen Classes (21 lớp kiểm thử cô lập):} 2,100 ảnh photo và 12,580 bản vẽ sketch.
+                    \item \textbf{Cam kết:} Cách ly hoàn toàn $100\%$, không rò rỉ dữ liệu kiểm thử vào quá trình train.
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techSlate}{Hạ tầng Huấn luyện Song song}{
+                \begin{itemize}
+                    \item \textbf{Phần cứng:} 2x NVIDIA Tesla T4 (Tổng 32GB VRAM) trên Kaggle Cloud.
+                    \item \textbf{Tăng tốc song song:} PyTorch \texttt{DataParallel} trên 2 GPUs kết hợp Mixed Precision (AMP FP16).
+                    \item \textbf{Batch Size:} 128 (64 mẫu/GPU).
+                    \item \textbf{Bộ tối ưu:} AdamW ($lr = 2 \times 10^{-5}$, weight decay $10^{-4}$) kèm Cosine Annealing ($T_{\max}=15$).
+                    \item \textbf{Thời gian:} 15 Epochs hoàn thành trong 10,510 giây (~2.9 giờ).
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 10: ĐỘNG HỌC HỘI TỤ HUẤN LUYỆN QUA 15 EPOCHS
+% ------------------------------------------------------------------------------
+\begin{frame}{9. Động học Hội tụ Huấn luyện qua 15 Epochs}
+    \begin{columns}[c]
+        \begin{column}{0.52\textwidth}
+            \centering
+            \IfFileExists{outputs/training_curves.png}{%
+                \includegraphics[width=\linewidth, height=0.68\textheight, keepaspectratio]{outputs/training_curves.png}
+            }{%
+                \IfFileExists{training_curves.png}{%
+                    \includegraphics[width=\linewidth, height=0.68\textheight, keepaspectratio]{training_curves.png}
+                }{%
+                    \fbox{Biểu đồ 15 Epochs: outputs/training_curves.png}
+                }%
+            }
+        \end{column}
+        \begin{column}{0.46\textwidth}
+            \techbox{techGreen}{Phân tích Điểm dừng Checkpoint Tối ưu}{
+                \begin{itemize}
+                    \item \textbf{Epoch 00 (Baseline Frozen CLIP):}\\mAP@all = $34.45\%$, mAP@200 = $27.84\%$.
+                    \item \textbf{Epoch 01 (Bước nhảy vọt ban đầu):}\\mAP@all tăng vọt lên $60.91\%$ ($+26.46\%$).
+                    \item \textbf{Epoch 09 (Checkpoint Tốt nhất):}\\Đạt đỉnh \textbf{mAP@all = 72.40\%} và \textbf{mAP@200 = 68.87\%}.
+                    \item \textbf{Từ Epoch 10 đến 15:}\\Validation mAP dao động nhẹ quanh $70\% - 71\%$, hàm mất mát hội tụ ổn định, không bị Overfitting.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 11: KẾT QUẢ SO SÁNH VỚI CÁC CÔNG TRÌNH QUỐC TẾ (SOTA)
+% ------------------------------------------------------------------------------
+\begin{frame}{10. Kết quả Đối sánh trên Tập chuẩn Sketchy Split 2}
+    \begin{center}
+    \resizebox{0.92\textwidth}{!}{%
+    \begin{tabular}{llccccc}
+        \toprule
+        \textbf{Phương pháp} & \textbf{Hội nghị / Năm} & \textbf{mAP@all} & \textbf{mAP@200} & \textbf{Recall@1} & \textbf{Recall@5} & \textbf{P@200 (Norm)} \\
+        \midrule
+        ZS-CVAE \textit{(Yelamarthi et al.)} & ECCV 2018 & 19.60 & 19.60 & - & - & - \\
+        SEM-PCYC \textit{(Dutta et al.)} & CVPR 2019 & 34.90 & 34.90 & - & - & - \\
+        ZS-SAKE \textit{(Liu et al.)} & ICCV 2019 & 49.70 & 49.70 & - & - & - \\
+        ZS-TVT \textit{(Tian et al.)} & AAAI 2022 & 53.10 & 53.10 & - & - & - \\
+        CLIP-AT \textit{(Sain et al.)} & CVPR 2023 & - & 72.30 & - & - & - \\
+        SketchFusion \textit{(Koley et al.)} & CVPR 2025 & - & \textbf{76.10} & - & - & - \\
+        \midrule
+        \textbf{Baseline 0 (Frozen CLIP ViT-B/32)} & Baseline & 34.45 & 27.84 & 52.93 & 72.04 & 38.64 \\
+        \textbf{Ours (Asymmetric LoRA-CLIP)} & \textbf{Đồ án CS331} & \textbf{72.40} & \textbf{68.87} & \textbf{81.87} & \textbf{93.64} & \textbf{85.72} \\
+        \bottomrule
+    \end{tabular}%
+    }
+    \end{center}
+    
+    \vspace{0.15cm}
+    \techbox{techNavy}{Đánh giá điểm nhấn}{
+        \begin{itemize}
+            \item Vượt trội hoàn toàn các phương pháp CNN truyền thống ($19\% - 53\%$).
+            \item Tăng trưởng so với CLIP gốc: $\text{mAP@all}$ tăng từ $34.45\%$ lên $\mathbf{72.40\%}$ ($+37.95\%$), Recall@1 đạt $\mathbf{81.87\%}$, Recall@5 đạt $\mathbf{93.64\%}$, và OOD AUROC đạt mức kỷ lục $\mathbf{83.49\%}$.
+        \end{itemize}
+    }
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 12: ĐÁNH GIÁ KHẢ NĂNG MỞ THẾ GIỚI TRÊN TU-BERLIN EXTENDED
+% ------------------------------------------------------------------------------
+\begin{frame}{11. Kiểm thử Thế giới mở Cross-Dataset trên TU-Berlin}
+    \begin{center}
+    \resizebox{0.92\textwidth}{!}{%
+    \begin{tabular}{lcccccc}
+        \toprule
+        \textbf{Cấu hình kiểm thử} & \textbf{Kho ảnh Gallery} & \textbf{Nét vẽ Query} & \textbf{Recall@1} & \textbf{Recall@5} & \textbf{Recall@10} & \textbf{mAP@all} \\
+        \midrule
+        Đoán ngẫu nhiên (Random Guess) & 204,070 & 20,000 & 0.40\% & 2.00\% & 4.00\% & $< 1.00\%$ \\
+        SEM-PCYC \textit{(CVPR 2019)} & 21,940 & 2,240 & - & - & - & 29.70\% \\
+        DSH \textit{(TIP 2020)} & 21,940 & 2,240 & - & - & - & 35.80\% \\
+        \midrule
+        \textbf{Ours -- Quy mô chuẩn TU-Berlin} & 21,940 & 2,240 & \textbf{62.45\%} & \textbf{78.10\%} & \textbf{83.50\%} & \textbf{57.51\%} \\
+        \textbf{Ours -- Stress-Test Siêu quy mô} & \textbf{204,070} & \textbf{20,000} & \textbf{46.65\%} & \textbf{63.73\%} & \textbf{69.38\%} & \textbf{25.34\%} \\
+        \bottomrule
+    \end{tabular}%
+    }
+    \end{center}
+
+    \vspace{0.15cm}
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techGreen}{Khả năng tổng quát hóa thực sự}{
+                Nét vẽ TU-Berlin vẽ tự do từ trí nhớ (khác hẳn phong cách Sketchy), nhưng mô hình vẫn đạt mAP@all = $\mathbf{57.51\%}$, chứng minh không bị học vẹt.
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{Năng lực mở rộng công nghiệp (Scalability)}{
+                Khi mở rộng kho ảnh lên hơn \textbf{204,000 bức ảnh} (250 danh mục), Recall@1 vẫn đạt $\mathbf{46.65\%}$ và Recall@10 đạt $\mathbf{69.38\%}$ (gấp 170 lần mức ngẫu nhiên).
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 13: NGHIÊN CỨU TRIỆT TIÊU (ABLATION STUDY)
+% ------------------------------------------------------------------------------
+\begin{frame}{12. Nghiên cứu Triệt tiêu từng Thành phần (Ablation Study)}
+    \begin{center}
+    \resizebox{0.92\textwidth}{!}{%
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Cấu hình thành phần mô hình} & \textbf{mAP@all (\%)} & \textbf{mAP@200 (\%)} & \textbf{Recall@1 (\%)} & \textbf{Acc@1 FG (\%)} \\
+        \midrule
+        (A) Baseline 0 (Frozen CLIP ViT-B/32) & 34.45 & 27.84 & 52.93 & 0.85 \\
+        (B) Thêm LoRA ($r=16$) trên Attention & 64.20 & 61.15 & 75.30 & 1.80 \\
+        (C) Thêm Semi-Hard Negative Mining & 69.68 & 68.61 & 81.18 & 2.65 \\
+        (D) Thêm Bộ tiền xử lý \texttt{SketchCV} & 71.10 & 68.30 & 81.40 & 3.10 \\
+        \textbf{(E) Đầy đủ (+ Spatial Patch Attention Pooling)} & \textbf{72.40} & \textbf{68.87} & \textbf{81.87} & \textbf{3.76} \\
+        \bottomrule
+    \end{tabular}%
+    }
+    \end{center}
+
+    \vspace{0.15cm}
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{Đóng góp của LoRA \& Semi-Hard Mining}{
+                \begin{itemize}
+                    \item LoRA thu hẹp khoảng cách miền nét vẽ (+29.75\% mAP@all).
+                    \item Semi-Hard Mining giúp phân tách biên không gian chặt chẽ (+5.48\% mAP@all).
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techGreen}{Đóng góp của Spatial Patch Pooling}{
+                \begin{itemize}
+                    \item Tăng độ chính xác Fine-Grained Acc@1 từ $2.65\%$ lên $\mathbf{3.76\%}$ (Acc@5 đạt $13.96\%$, Acc@10 đạt $22.94\%$).
+                    \item Chứng minh vai trò bảo toàn chi tiết đường biên cục bộ.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 14: MINH HỌA KẾT QUẢ THỰC NGHIỆM TRỰC QUAN (QUALITATIVE)
+% ------------------------------------------------------------------------------
+\begin{frame}{13. Minh họa Kết quả Thực nghiệm Truy hồi Thực tế}
+    \begin{columns}[c]
+        \begin{column}{0.48\textwidth}
+            \centering
+            \IfFileExists{outputs/eval_results/query_sample_1.png}{%
+                \includegraphics[width=\textwidth]{outputs/eval_results/query_sample_1.png}
+            }{%
+                \fbox{Mẫu truy hồi 1: outputs/eval_results/query_sample_1.png}
+            }
+            \vspace{0.1cm}
+            {\footnotesize\color{techSlate}Hình 1: Truy vấn nét vẽ tay lớp Unseen -- Top 5 ảnh trả về chính xác}
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \centering
+            \IfFileExists{outputs/eval_results/query_sample_2.png}{%
+                \includegraphics[width=\textwidth]{outputs/eval_results/query_sample_2.png}
+            }{%
+                \fbox{Mẫu truy hồi 2: outputs/eval_results/query_sample_2.png}
+            }
+            \vspace{0.1cm}
+            {\footnotesize\color{techSlate}Hình 2: Truy vấn trường hợp nét vẽ có độ trừu tượng cao}
+        \end{column}
+    \end{columns}
+    
+    \vspace{0.2cm}
+    \techbox{techNavy}{Quan sát định tính}{
+        Mô hình định vị chính xác góc nhìn và kiểu dáng đối tượng ngay cả khi nét vẽ của người dùng bị méo mó hoặc đơn giản hóa quá mức.
+    }
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 15: ỨNG DỤNG WEB DEMO TƯƠNG TÁC (APP.PY)
+% ------------------------------------------------------------------------------
+\begin{frame}{14. Ứng dụng Web Demo Tương tác Thời gian thực (\texttt{app.py})}
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{Chế độ 1: Sketch-to-Image Retrieval}{
+                \begin{itemize}
+                    \item Canvas vẽ tay tương tác hỗ trợ Undo, Clear, chỉnh cọ vẽ.
+                    \item Tích hợp lọc chấm chuột vô tình thời gian thực.
+                    \item Truy tìm Top-10 ảnh tương đồng nhất từ kho 12,500 ảnh chuẩn với độ tương đồng Cosine Similarity hiển thị rõ ràng.
+                    \item Tốc độ phản hồi cực nhanh: $< 25\text{ms}$ trên GPU.
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techBlue}{Chế độ 2: Zero-Shot Classification \& Custom Gallery}{
+                \begin{itemize}
+                    \item \textbf{Đoán vật thể Zero-Shot:} So khớp vector nét vẽ với CLIP Text Prototypes để đọc tên đối tượng kèm thanh phần trăm tự tin (Top 5).
+                    \item \textbf{Nạp kho ảnh cá nhân (Custom Gallery):} Kéo thả ảnh mới bất kỳ vào RAM; hệ thống trích xuất vector tức thì để người dùng vẽ sketch tìm ảnh vừa tải lên.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------------------
+% SLIDE 16: KẾT LUẬN & HƯỚNG PHÁT TRIỂN
+% ------------------------------------------------------------------------------
+\begin{frame}{15. Kết luận và Hướng phát triển}
+    \begin{columns}[t]
+        \begin{column}{0.48\textwidth}
+            \techbox{techGreen}{Đóng góp chính của Đề tài}{
+                \begin{itemize}
+                    \item Giải quyết khoảng cách miền dữ liệu với chỉ \textbf{0.78\% tham số khả huấn} qua Asymmetric LoRA.
+                    \item Khắc phục hiện tượng sụp đổ hình học nhờ \textbf{Spatial Patch Attention Pooling}.
+                    \item Đạt kết quả xuất sắc: \textbf{mAP@all 72.40\%}, \textbf{Recall@1 81.87\%}, và hoàn thành Stress-Test 204,000 ảnh TU-Berlin (\textbf{Recall@10 69.38\%}).
+                    \item Triển khai hoàn chỉnh ứng dụng Web Demo thực tế.
+                \end{itemize}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \techbox{techNavy}{Hướng nghiên cứu tương lai}{
+                \begin{itemize}
+                    \item \textbf{Truy hồi Đa phương thức (Multimodal Sketch + Text):} Cho phép người dùng vẽ kiểu dáng và gõ bổ sung thuộc tính màu sắc, chất liệu (CVPR 2024).
+                    \item \textbf{Lượng tử hóa QLoRA 4-bit:} Nén mô hình để triển khai trực tiếp trên thiết bị biên di động / iPad.
+                    \item \textbf{Thử nghiệm Backbone lớn hơn:} Đánh giá trên CLIP ViT-L/14 hoặc EVA-CLIP.
+                \end{itemize}
+            }
+        \end{column}
+    \end{columns}
+    
+    \vspace{0.1cm}
+    \begin{center}
+        \textbf{\large\color{techNavy}Xin trân trọng cảm ơn Thầy và Hội đồng đã chú ý lắng nghe!}\\[0.04cm]
+        {\footnotesize\color{techSlate}Nhóm nghiên cứu sẵn sàng tiếp nhận các câu hỏi thảo luận.}
+    \end{center}
+\end{frame}
+
+\end{document}

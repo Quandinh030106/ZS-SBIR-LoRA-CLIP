@@ -140,6 +140,12 @@ def main():
         lora_rank=cfg.lora_rank,
         lora_alpha=cfg.lora_alpha,
         lora_targets=cfg.lora_targets,
+        embed_dim=getattr(cfg, "embed_dim", 512),
+        bottleneck_dim=getattr(cfg, "bottleneck_dim", 256),
+        res_scale=getattr(cfg, "res_scale", 0.2),
+        unfreeze_sketch_ln=getattr(cfg, "unfreeze_sketch_ln", True),
+        enable_patch_pooling=getattr(cfg, "enable_patch_pooling", True),
+        patch_pool_weight=getattr(cfg, "patch_pool_weight", 0.3),
     ).to(device)
 
     if "model_state" in ckpt:
@@ -147,6 +153,8 @@ def main():
         model.photo_adapter.load_state_dict(ckpt["model_state"]["photo_adapter"])
         model.text_adapter.load_state_dict(ckpt["model_state"]["text_adapter"])
         model.sketch_visual.load_state_dict(ckpt["model_state"]["sketch_visual"])
+        if model.spatial_pooler is not None and "spatial_pooler" in ckpt["model_state"]:
+            model.spatial_pooler.load_state_dict(ckpt["model_state"]["spatial_pooler"])
     model.eval()
 
     tfs = build_transforms(image_size=cfg.image_size)
