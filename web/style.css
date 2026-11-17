@@ -308,6 +308,11 @@ body {
   transition: opacity 0.2s ease;
 }
 
+.canvas-overlay.hidden,
+#canvas-overlay.hidden {
+  display: none !important;
+}
+
 .spinner {
   width: 32px;
   height: 32px;
@@ -1043,6 +1048,11 @@ input[type="range"] {
   }
 }
 
+/* ==================== GLOBAL UTILITIES ==================== */
+.hidden {
+  display: none !important;
+}
+
 /* ==================== MODALS ==================== */
 .modal {
   position: fixed;
@@ -1054,7 +1064,7 @@ input[type="range"] {
 }
 
 .modal.hidden {
-  display: none;
+  display: none !important;
 }
 
 .modal-backdrop {
@@ -1135,6 +1145,10 @@ input[type="range"] {
   border-radius: var(--radius-sm);
   font-size: 12px;
   font-family: var(--font-mono);
+}
+
+.ping-result-box.hidden {
+  display: none !important;
 }
 
 .ping-success {

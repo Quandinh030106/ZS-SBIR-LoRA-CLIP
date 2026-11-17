@@ -8,10 +8,17 @@
 (function () {
   "use strict";
 
+  // Auto-migrate legacy or broken URLs in localStorage
+  let savedBackend = localStorage.getItem("zs_sbir_backend_url");
+  if (!savedBackend || savedBackend.includes("quandinh") || !savedBackend.includes("quan030106-zs-sbir-api")) {
+    savedBackend = "https://quan030106-zs-sbir-api.hf.space";
+    localStorage.setItem("zs_sbir_backend_url", savedBackend);
+  }
+
   // --- 1. STATE & CONFIGURATION ---
   const state = {
-    backendUrl: localStorage.getItem("zs_sbir_backend_url") || "https://quandinh030106-zs-sbir.hf.space",
-    demoMode: localStorage.getItem("zs_sbir_demo_mode") !== "false", // Default to true for foolproof Vercel demo
+    backendUrl: savedBackend,
+    demoMode: localStorage.getItem("zs_sbir_demo_mode") === "true", // Default false unless user explicitly turned it on
     isOnline: false,
     activeClass: "helicopter",
     tool: "brush", // "brush" or "eraser"
@@ -217,6 +224,21 @@
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     saveCanvasState();
     state.activeClass = null;
+    overlay.classList.add("hidden");
+  }
+
+  function isCanvasEmpty() {
+    try {
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 0; i < imgData.length; i += 16) {
+        if (imgData[i] < 235 || imgData[i + 1] < 235 || imgData[i + 2] < 235) {
+          return false;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   let lastPoint = null;
@@ -396,6 +418,12 @@
 
   // --- 7. CORE INFERENCE ENGINES ---
   async function executeRetrieval() {
+    if (isCanvasEmpty() && !state.activeClass) {
+      alert("Vui lòng vẽ nét phác thảo lên bảng vẽ hoặc chọn một đối tượng mẫu trước khi tìm kiếm!");
+      overlay.classList.add("hidden");
+      return;
+    }
+
     overlay.classList.remove("hidden");
     const tStart = performance.now();
 
@@ -408,63 +436,66 @@
     let data = null;
     let usedFallback = false;
 
-    if (state.isOnline && !state.demoMode) {
-      try {
-        const resp = await fetch(`${state.backendUrl}/api/retrieve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sketch: sketchBase64,
-            gallery_scope: scope,
-            semantic_clue: clue,
-            top_k: 10
-          }),
-          signal: AbortSignal.timeout(6000)
-        });
-        if (resp.ok) {
-          data = await resp.json();
-        } else {
-          throw new Error(`HTTP ${resp.status}`);
+    try {
+      if (state.isOnline && !state.demoMode) {
+        try {
+          const resp = await fetch(`${state.backendUrl}/api/retrieve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sketch: sketchBase64,
+              gallery_scope: scope,
+              semantic_clue: clue,
+              top_k: 10
+            }),
+            signal: AbortSignal.timeout(4000)
+          });
+          if (resp.ok) {
+            data = await resp.json();
+          } else {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+        } catch (err) {
+          console.warn("[CLIENT] Backend retrieval failed or timed out. Falling back to Demo Engine:", err);
+          usedFallback = true;
         }
-      } catch (err) {
-        console.warn("[CLIENT] Backend retrieval failed or timed out. Falling back to Demo Engine:", err);
+      } else {
         usedFallback = true;
       }
-    } else {
-      usedFallback = true;
-    }
 
-    if (usedFallback) {
-      // Simulate authentic latency: 35ms - 55ms
-      await new Promise((r) => setTimeout(r, 45));
-      const targetCls = state.activeClass || "helicopter";
-      const preset = window.DEMO_PRESETS ? window.DEMO_PRESETS[targetCls] : null;
+      if (usedFallback) {
+        // Simulate authentic latency: 35ms - 55ms
+        await new Promise((r) => setTimeout(r, 45));
+        const targetCls = state.activeClass || "helicopter";
+        const preset = window.DEMO_PRESETS ? window.DEMO_PRESETS[targetCls] : null;
 
-      if (preset) {
-        data = {
-          top_1_class: targetCls,
-          max_similarity: preset.photos[0].similarity,
-          latency_ms: (performance.now() - tStart).toFixed(1),
-          results: preset.photos
-        };
-      } else {
-        data = {
-          top_1_class: "helicopter",
-          max_similarity: 0.894,
-          latency_ms: (performance.now() - tStart).toFixed(1),
-          results: []
-        };
+        if (preset) {
+          data = {
+            top_1_class: targetCls,
+            max_similarity: preset.photos[0].similarity,
+            latency_ms: (performance.now() - tStart).toFixed(1),
+            results: preset.photos
+          };
+        } else {
+          data = {
+            top_1_class: "helicopter",
+            max_similarity: 0.894,
+            latency_ms: (performance.now() - tStart).toFixed(1),
+            results: []
+          };
+        }
       }
-    }
 
-    // Render Results
-    renderRetrievalResults(data);
-    overlay.classList.add("hidden");
+      // Render Results
+      renderRetrievalResults(data);
 
-    // Switch to retrieval tab if on classification tab
-    const tabRetrievalBtn = document.querySelector('[data-tab="tab-retrieval"]');
-    if (tabRetrievalBtn && !tabRetrievalBtn.classList.contains("active")) {
-      tabRetrievalBtn.click();
+      // Switch to retrieval tab if on classification tab
+      const tabRetrievalBtn = document.querySelector('[data-tab="tab-retrieval"]');
+      if (tabRetrievalBtn && !tabRetrievalBtn.classList.contains("active")) {
+        tabRetrievalBtn.click();
+      }
+    } finally {
+      overlay.classList.add("hidden");
     }
   }
 
@@ -520,6 +551,12 @@
   }
 
   async function executeClassification() {
+    if (isCanvasEmpty() && !state.activeClass) {
+      alert("Vui lòng vẽ nét phác thảo lên bảng vẽ hoặc chọn một đối tượng mẫu trước khi nhận diện!");
+      overlay.classList.add("hidden");
+      return;
+    }
+
     overlay.classList.remove("hidden");
     const tStart = performance.now();
 
@@ -529,64 +566,67 @@
     let data = null;
     let usedFallback = false;
 
-    if (state.isOnline && !state.demoMode) {
-      try {
-        const resp = await fetch(`${state.backendUrl}/api/classify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sketch: sketchBase64,
-            semantic_clue: clue
-          }),
-          signal: AbortSignal.timeout(6000)
-        });
-        if (resp.ok) {
-          data = await resp.json();
-        } else {
-          throw new Error(`HTTP ${resp.status}`);
+    try {
+      if (state.isOnline && !state.demoMode) {
+        try {
+          const resp = await fetch(`${state.backendUrl}/api/classify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sketch: sketchBase64,
+              semantic_clue: clue
+            }),
+            signal: AbortSignal.timeout(4000)
+          });
+          if (resp.ok) {
+            data = await resp.json();
+          } else {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+        } catch (err) {
+          console.warn("[CLIENT] Backend classify failed or timed out. Falling back to Demo Engine:", err);
+          usedFallback = true;
         }
-      } catch (err) {
-        console.warn("[CLIENT] Backend classify failed or timed out. Falling back to Demo Engine:", err);
+      } else {
         usedFallback = true;
       }
-    } else {
-      usedFallback = true;
-    }
 
-    if (usedFallback) {
-      await new Promise((r) => setTimeout(r, 35));
-      const targetCls = state.activeClass || "helicopter";
-      const preset = window.DEMO_PRESETS ? window.DEMO_PRESETS[targetCls] : null;
+      if (usedFallback) {
+        await new Promise((r) => setTimeout(r, 35));
+        const targetCls = state.activeClass || "helicopter";
+        const preset = window.DEMO_PRESETS ? window.DEMO_PRESETS[targetCls] : null;
 
-      if (preset && preset.top5) {
-        data = {
-          top_1_class: targetCls,
-          confidence: preset.top5[0].probability,
-          latency_ms: (performance.now() - tStart).toFixed(1),
-          candidates: preset.top5
-        };
-      } else {
-        data = {
-          top_1_class: "helicopter",
-          confidence: 0.885,
-          latency_ms: (performance.now() - tStart).toFixed(1),
-          candidates: [
-            { rank: 1, class: "helicopter", probability: 0.885, cosine_sim: 0.842 },
-            { rank: 2, class: "blimp", probability: 0.052, cosine_sim: 0.412 },
-            { rank: 3, class: "airplane", probability: 0.031, cosine_sim: 0.385 },
-            { rank: 4, class: "wheelchair", probability: 0.018, cosine_sim: 0.34 },
-            { rank: 5, class: "motorcycle", probability: 0.014, cosine_sim: 0.312 }
-          ]
-        };
+        if (preset && preset.top5) {
+          data = {
+            top_1_class: targetCls,
+            confidence: preset.top5[0].probability,
+            latency_ms: (performance.now() - tStart).toFixed(1),
+            candidates: preset.top5
+          };
+        } else {
+          data = {
+            top_1_class: "helicopter",
+            confidence: 0.885,
+            latency_ms: (performance.now() - tStart).toFixed(1),
+            candidates: [
+              { rank: 1, class: "helicopter", probability: 0.885, cosine_sim: 0.842 },
+              { rank: 2, class: "blimp", probability: 0.052, cosine_sim: 0.412 },
+              { rank: 3, class: "airplane", probability: 0.031, cosine_sim: 0.385 },
+              { rank: 4, class: "wheelchair", probability: 0.018, cosine_sim: 0.34 },
+              { rank: 5, class: "motorcycle", probability: 0.014, cosine_sim: 0.312 }
+            ]
+          };
+        }
       }
+
+      renderClassificationResults(data);
+
+      // Switch to classification tab
+      const tabClassBtn = document.querySelector('[data-tab="tab-classification"]');
+      if (tabClassBtn) tabClassBtn.click();
+    } finally {
+      overlay.classList.add("hidden");
     }
-
-    renderClassificationResults(data);
-    overlay.classList.add("hidden");
-
-    // Switch to classification tab
-    const tabClassBtn = document.querySelector('[data-tab="tab-classification"]');
-    if (tabClassBtn) tabClassBtn.click();
   }
 
   function renderClassificationResults(data) {

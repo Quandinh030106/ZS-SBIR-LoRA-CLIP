@@ -1,4 +1,4 @@
-﻿---
+---
 title: ZS-SBIR LoRA-CLIP API & Studio
 emoji: 🎨
 colorFrom: indigo
