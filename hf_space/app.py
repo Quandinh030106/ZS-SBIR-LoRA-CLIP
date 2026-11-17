@@ -605,17 +605,44 @@ else:
     except Exception as e:
         print(f"[INFO] Chua ket noi duoc dataset zip ({e}).")
 
+def ensure_photo_zip() -> Optional[Path]:
+    global PHOTO_ZIP_PATH
+    if PHOTO_ZIP_PATH is not None and PHOTO_ZIP_PATH.exists():
+        return PHOTO_ZIP_PATH
+    local_zip = proj_root / "sketchy_photos.zip"
+    if local_zip.exists():
+        PHOTO_ZIP_PATH = local_zip
+        return PHOTO_ZIP_PATH
+    try:
+        from huggingface_hub import hf_hub_download
+        downloaded = hf_hub_download(
+            repo_id="quan030106/sketchy_photos",
+            filename="sketchy_photos.zip",
+            repo_type="dataset",
+        )
+        PHOTO_ZIP_PATH = Path(downloaded)
+        return PHOTO_ZIP_PATH
+    except Exception as e:
+        print(f"[WARNING] Khong the tai sketchy_photos.zip: {e}")
+        return None
+
 def get_zip_handle() -> Optional[zipfile.ZipFile]:
     global CACHED_ZIP_HANDLE
-    if CACHED_ZIP_HANDLE is None and PHOTO_ZIP_PATH and PHOTO_ZIP_PATH.exists():
+    zp = ensure_photo_zip()
+    if CACHED_ZIP_HANDLE is None and zp and zp.exists():
         try:
-            CACHED_ZIP_HANDLE = zipfile.ZipFile(str(PHOTO_ZIP_PATH), 'r')
+            CACHED_ZIP_HANDLE = zipfile.ZipFile(str(zp), 'r')
         except Exception as e:
             print(f"[WARNING] Khong the doc file zip: {e}")
     return CACHED_ZIP_HANDLE
 
 def get_photo_image(original_path: str, class_name: str) -> Optional[Image.Image]:
     """Retrieve photo directly from disk or from sketchy_photos.zip in <1ms without disk extraction."""
+    # Cross-platform normalization: strip Windows drive and backslashes
+    clean_path = str(original_path).replace("\\", "/")
+    fname = clean_path.split("/")[-1]
+
+    # 1. Check direct file path if exists
     p = Path(original_path)
     if p.exists() and p.is_file():
         try:
@@ -623,8 +650,7 @@ def get_photo_image(original_path: str, class_name: str) -> Optional[Image.Image
         except Exception:
             pass
 
-    fname = p.name
-    # 1. Check local disk directories if present
+    # 2. Check local disk directories if present
     disk_cands = [
         proj_root / "photos" / class_name / fname,
         proj_root / "gallery_photos" / class_name / fname,
@@ -637,9 +663,10 @@ def get_photo_image(original_path: str, class_name: str) -> Optional[Image.Image
             except Exception:
                 pass
 
-    # 2. Direct instant read from cached ZIP (0 ms disk extraction overhead)
-    zh = get_zip_handle()
-    if zh is not None:
+    # 3. Direct instant read from cached ZIP (0 ms disk extraction overhead)
+    zip_p = ensure_photo_zip()
+    if zip_p and zip_p.exists():
+        zh = get_zip_handle()
         zip_candidates = [
             f"{class_name}/{fname}",
             f"photos/{class_name}/{fname}",
@@ -647,11 +674,17 @@ def get_photo_image(original_path: str, class_name: str) -> Optional[Image.Image
             fname,
         ]
         for zcand in zip_candidates:
+            if zh is not None:
+                try:
+                    raw_bytes = zh.read(zcand)
+                    return Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+                except Exception:
+                    pass
+            # Fallback direct read with fresh handle
             try:
-                raw_bytes = zh.read(zcand)
-                return Image.open(io.BytesIO(raw_bytes)).convert("RGB")
-            except KeyError:
-                continue
+                with zipfile.ZipFile(str(zip_p), "r") as fresh_zh:
+                    raw_bytes = fresh_zh.read(zcand)
+                    return Image.open(io.BytesIO(raw_bytes)).convert("RGB")
             except Exception:
                 continue
 
